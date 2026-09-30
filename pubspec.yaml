@@ -1,0 +1,29 @@
+name: dacha_annonce
+description: Український календар заходів та бронювання простору Дача.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: ^3.13.4
+  flutter: '>=3.47.5'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  cupertino_icons: ^1.0.9
+  firebase_core: ^4.15.0
+  firebase_auth: ^6.7.0
+  cloud_firestore: ^6.10.0
+  flutter_riverpod: ^3.4.3
+  go_router: ^18.0.1
+  intl: ^0.20.3
+  timezone: ^0.11.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+

@@ -1,0 +1,1 @@
+{"name":"dacha-annonce-tooling","private":true,"scripts":{"emulators":"firebase emulators:start --only auth,firestore --project demo-dacha"},"devDependencies":{"firebase-tools":"15.31.0","playwright":"1.63.0"}}

@@ -1,0 +1,390 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function role() {
+      let p = request.auth == null ? null : profile();
+      return p == null || p.isDisabled ? '' : p.role;
+    }
+    function active() { return role() in ['organizer','admin','developer']; }
+    function admin() { return role() == 'admin'; }
+    function organizer() { return role() == 'organizer'; }
+    function bounded() { return request.query.limit != null && request.query.limit > 0 && request.query.limit <= 100; }
+    function text(v, low, high) {
+      return v is string && v.size() >= low && v.size() <= high
+        && (low == 0 || v.matches('^\\S([\\s\\S]*\\S)?$'));
+    }
+    function id(v) { return v is string && v.matches('^[^/]{1,128}$'); }
+    function exact(d, keys) { return d.size() == keys.size() && d.keys().hasOnly(keys); }
+    function roomView(d) {
+      return {'name':d.name,'description':d.description,'locationLabel':d.locationLabel,
+        'capacity':d.capacity,'isActive':d.isActive,'sortOrder':d.sortOrder};
+    }
+    function auditMatches(kind, entityId, before, after, revision, auditId) {
+      let a = getAfter(/databases/$(database)/documents/adminAudit/$(auditId)).data;
+      return a.entityType == kind && a.entityId == entityId && a.actorId == request.auth.uid
+        && a.at == request.time && a.revision == revision && a.before == before && a.after == after;
+    }
+    function validRoom(d) {
+      return exact(d,['name','description','locationLabel','capacity','isActive','sortOrder',
+        'createdAt','updatedAt','schemaVersion','revision','lastAuditId'])
+        && text(d.name,2,80) && text(d.description,0,1000) && text(d.locationLabel,0,160)
+        && (d.capacity == null || (d.capacity is int && d.capacity >= 1 && d.capacity <= 1000))
+        && d.isActive is bool && d.sortOrder is int && d.sortOrder >= 0 && d.sortOrder <= 10000
+        && d.createdAt is timestamp && d.updatedAt == request.time
+        && d.schemaVersion is int && d.schemaVersion == 1 && d.revision is int && id(d.lastAuditId);
+    }
+    function validUser(d) {
+      return exact(d,['displayName','role','isDisabled','createdAt','updatedAt','createdBy','updatedBy',
+        'schemaVersion','adminRevision','lastAdminAuditId'])
+        && text(d.displayName,2,80) && d.role in ['organizer','admin','developer']
+        && d.isDisabled is bool && d.createdAt is timestamp && d.updatedAt == request.time
+        && id(d.createdBy) && d.updatedBy == request.auth.uid && d.schemaVersion is int && d.schemaVersion == 1
+        && d.adminRevision is int && d.adminRevision >= 0
+        && (d.lastAdminAuditId == null || id(d.lastAdminAuditId));
+    }
+    match /users/{uid} {
+      allow get: if request.auth != null && (uid == request.auth.uid || admin());
+      allow list: if admin() && bounded();
+      allow create: if request.auth != null && uid == request.auth.uid && validUser(request.resource.data)
+        && request.resource.data.role == 'organizer' && request.resource.data.isDisabled == false
+        && request.resource.data.createdAt == request.time && request.resource.data.createdBy == uid
+        && request.resource.data.adminRevision == 0 && request.resource.data.lastAdminAuditId == null;
+      allow update: if validUser(request.resource.data) && (
+        (active() && uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName','updatedAt','updatedBy']))
+        || (admin() && resource.data.role == 'organizer'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDisabled','updatedAt','updatedBy','adminRevision','lastAdminAuditId'])
+          && request.resource.data.isDisabled != resource.data.isDisabled
+          && request.resource.data.adminRevision == resource.data.adminRevision + 1
+          && auditMatches('user',uid,{'isDisabled':resource.data.isDisabled},
+            {'isDisabled':request.resource.data.isDisabled},request.resource.data.adminRevision,request.resource.data.lastAdminAuditId)));
+      allow delete: if false;
+    }
+    match /rooms/{roomId} {
+      allow get: if resource.data.isActive || admin();
+      allow list: if bounded() && (resource.data.isActive || admin());
+      allow create: if admin() && validRoom(request.resource.data)
+        && request.resource.data.createdAt == request.time && request.resource.data.revision == 1
+        && auditMatches('room',roomId,{},roomView(request.resource.data),1,request.resource.data.lastAuditId);
+      allow update: if admin() && validRoom(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.revision == resource.data.revision + 1
+        && auditMatches('room',roomId,roomView(resource.data),roomView(request.resource.data),
+          request.resource.data.revision,request.resource.data.lastAuditId);
+      allow delete: if false;
+    }
+    function validAudit(a) {
+      return exact(a,['entityType','entityId','action','actorId','at','changedFields','revision','before','after'])
+        && a.entityType in ['room','user'] && id(a.entityId) && a.actorId == request.auth.uid
+        && a.at == request.time && a.revision is int && a.revision > 0
+        && a.before is map && a.after is map && a.changedFields is list
+        && a.changedFields.size() == a.changedFields.toSet().size()
+        && a.changedFields.toSet() == a.after.diff(a.before).affectedKeys();
+    }
+    function roomAudit(a, auditId) {
+      let p = /databases/$(database)/documents/rooms/$(a.entityId);
+      let n = getAfter(p).data;
+      let existed = exists(p);
+      return n.lastAuditId == auditId && n.revision == a.revision && n.updatedAt == request.time
+        && a.after == roomView(n)
+        && (existed ? a.before == roomView(get(p).data) && n.revision == get(p).data.revision + 1
+          && a.action == (n.isActive == false && get(p).data.isActive ? 'archive' : 'update')
+          : a.before == {} && n.revision == 1 && a.action == 'create');
+    }
+    function userAudit(a, auditId) {
+      let p = /databases/$(database)/documents/users/$(a.entityId);
+      let b = get(p).data;
+      let n = getAfter(p).data;
+      return b.role == 'organizer' && n.lastAdminAuditId == auditId && n.adminRevision == a.revision
+        && n.adminRevision == b.adminRevision + 1 && n.updatedAt == request.time
+        && a.before == {'isDisabled':b.isDisabled} && a.after == {'isDisabled':n.isDisabled}
+        && b.isDisabled != n.isDisabled && a.action == 'set_disabled';
+    }
+    match /adminAudit/{auditId} {
+      allow get: if admin();
+      allow list: if admin() && bounded();
+      allow create: if admin() && validAudit(request.resource.data)
+        && (request.resource.data.entityType == 'room'
+          ? roomAudit(request.resource.data,auditId) : userAudit(request.resource.data,auditId));
+      allow update, delete: if false;
+    }
+
+    function blockSeconds(t) { return int(t.toMillis() / 21600000) * 21600; }
+    function blockIds(d) {
+      let first = string(blockSeconds(d.startAt));
+      let last = string(blockSeconds(d.endAt - duration.value(1,'ms')));
+      return first == last ? [first] : [first,last];
+    }
+    function ownerOrAdmin(d) { return admin() || (organizer() && d.organizerId == request.auth.uid); }
+    function future(d) { return d.startAt > request.time && d.startAt <= request.time + duration.value(180,'d'); }
+    function activeRoom(d) { return getAfter(/databases/$(database)/documents/rooms/$(d.roomId)).data.isActive; }
+    function sameInterval(b,n) { return b.roomId == n.roomId && b.startAt == n.startAt && b.endAt == n.endAt; }
+    function validBooking(d) {
+      return exact(d,['organizerId','roomId','title','description','responsibleName','startAt','endAt','timeZone','status',
+        'roomNameSnapshot','locationSnapshot','rejectionReason','cancellationReason','reviewedAt','reviewedBy',
+        'cancelledAt','cancelledBy','occupancyBlockIds','version','lastAction','createdAt','updatedAt','createdBy','updatedBy','schemaVersion'])
+        && id(d.organizerId) && id(d.roomId) && text(d.title,3,120) && text(d.description,0,5000)
+        && text(d.responsibleName,0,80)
+        && d.startAt is timestamp && d.endAt is timestamp && d.startAt < d.endAt
+        && d.startAt.toMillis() % 1800000 == 0 && d.endAt.toMillis() % 1800000 == 0
+        && d.startAt == timestamp.value(d.startAt.toMillis()) && d.endAt == timestamp.value(d.endAt.toMillis())
+        && d.endAt - d.startAt <= duration.value(6,'h') && d.startAt.toMillis() >= 0
+        && d.status in ['pending','approved','rejected','cancelled']
+        && text(d.roomNameSnapshot,0,80) && text(d.locationSnapshot,0,160)
+        && d.occupancyBlockIds == blockIds(d) && d.version is int && d.version >= 1
+        && d.lastAction in ['create','edit','approve','reject','cancel','reschedule']
+        && d.createdAt is timestamp && id(d.createdBy)
+        && d.schemaVersion is int
+        && [d.timeZone,d.updatedAt,d.updatedBy,d.schemaVersion] == ['Europe/Kyiv',request.time,request.auth.uid,1]
+        && (d.status == 'rejected' ? text(d.rejectionReason,3,1000) : d.rejectionReason == null)
+        && (d.status == 'cancelled' ? (d.cancellationReason == null || text(d.cancellationReason,0,1000))
+          && d.cancelledAt == request.time && d.cancelledBy == request.auth.uid
+          : [d.cancellationReason,d.cancelledAt,d.cancelledBy] == [null,null,null])
+        && (d.status in ['approved','rejected'] ? d.reviewedAt is timestamp && id(d.reviewedBy)
+          : d.status == 'pending' ? [d.reviewedAt,d.reviewedBy] == [null,null]
+          : ([d.reviewedAt,d.reviewedBy] == [null,null]) || (d.reviewedAt is timestamp && id(d.reviewedBy)));
+    }
+    function snapshotMatches(n) {
+      let r = getAfter(/databases/$(database)/documents/rooms/$(n.roomId)).data;
+      return r.isActive && [n.roomNameSnapshot,n.locationSnapshot] == [r.name,r.locationLabel];
+    }
+    function createAllowed(n) {
+      let actorRole = role();
+      let room = getAfter(/databases/$(database)/documents/rooms/$(n.roomId)).data;
+      return [n.version,n.createdBy,n.createdAt,n.lastAction,n.organizerId] == [1,request.auth.uid,request.time,'create',request.auth.uid]
+        && future(n) && room.isActive
+        && (n.status == 'pending'
+          ? (actorRole == 'admin' || actorRole == 'organizer' && request.auth.token.email_verified == true)
+            && [n.roomNameSnapshot,n.locationSnapshot] == ['','']
+          : n.status == 'approved' && actorRole == 'admin'
+            && [n.roomNameSnapshot,n.locationSnapshot,n.reviewedAt,n.reviewedBy] == [room.name,room.locationLabel,request.time,request.auth.uid]);
+    }
+    function pendingTransition(b,n,actorRole,fields) {
+      return n.status == 'pending'
+        ? (actorRole == 'admin' || actorRole == 'organizer' && b.organizerId == request.auth.uid && request.auth.token.email_verified == true)
+          && n.lastAction == 'edit' && future(n) && activeRoom(n)
+          && fields.hasOnly(['roomId','title','description','responsibleName','startAt','endAt','occupancyBlockIds','version','lastAction','updatedAt','updatedBy'])
+        : actorRole == 'admin' && [n.reviewedAt,n.reviewedBy] == [request.time,request.auth.uid]
+          && (n.status == 'rejected'
+            ? n.lastAction == 'reject' && fields.hasOnly(['status','rejectionReason','reviewedAt','reviewedBy','version','lastAction','updatedAt','updatedBy'])
+            : n.status == 'approved' && n.lastAction == 'approve' && future(n) && snapshotMatches(n)
+              && fields.hasOnly(['status','roomNameSnapshot','locationSnapshot','reviewedAt','reviewedBy','version','lastAction','updatedAt','updatedBy']));
+    }
+    function transition(b,n) {
+      let actorRole = role();
+      let fields = n.diff(b).affectedKeys();
+      return [n.organizerId,n.createdAt,n.createdBy] == [b.organizerId,b.createdAt,b.createdBy]
+        && n.version == b.version + 1 && b.status in ['pending','approved']
+        && (n.status == 'cancelled'
+          ? n.lastAction == 'cancel'
+            && (actorRole == 'admin' || actorRole == 'organizer' && b.organizerId == request.auth.uid && b.startAt > request.time)
+            && fields.hasOnly(['status','cancellationReason','cancelledAt','cancelledBy','version','lastAction','updatedAt','updatedBy'])
+          : b.status == 'pending' ? pendingTransition(b,n,actorRole,fields)
+          : n.status == 'approved' && actorRole == 'admin'
+            && [n.reviewedAt,n.reviewedBy] == [b.reviewedAt,b.reviewedBy]
+            && (sameInterval(b,n)
+              ? n.lastAction == 'edit' && [n.roomNameSnapshot,n.locationSnapshot] == [b.roomNameSnapshot,b.locationSnapshot]
+              : n.lastAction == 'reschedule' && b.startAt > request.time && future(n) && snapshotMatches(n)));
+    }
+    function publicData(n, publishedAt) {
+      return {'title':n.title,'description':n.description,'roomId':n.roomId,'roomNameSnapshot':n.roomNameSnapshot,
+        'locationSnapshot':n.locationSnapshot,'responsibleName':n.responsibleName,'startAt':n.startAt,'endAt':n.endAt,'timeZone':n.timeZone,
+        'bookingVersion':n.version,'publishedAt':publishedAt,'updatedAt':request.time,'schemaVersion':1};
+    }
+    function historyData(b,n) {
+      return {'version':n.version,'action':n.lastAction,'actorId':request.auth.uid,'actorRole':profile().role,
+        'at':request.time,'fromStatus':b == null ? null : b.status,'toStatus':n.status,
+        'oldRoomId':b == null ? null : b.roomId,'newRoomId':n.roomId,
+        'oldStartAt':b == null ? null : b.startAt,'oldEndAt':b == null ? null : b.endAt,
+        'newStartAt':n.startAt,'newEndAt':n.endAt};
+    }
+    function mirrors(b,n,bookingId) {
+      let p = /databases/$(database)/documents/publicEvents/$(bookingId);
+      // Full booking validation stays in the booking rule.
+      // Exact history/projection validation is enforced by their reciprocal rules.
+      return getAfter(/databases/$(database)/documents/bookings/$(bookingId)/history/$(string(n.version))).data.version == n.version
+        && (n.status == 'approved' ? getAfter(p).data.bookingVersion == n.version : !existsAfter(p));
+    }
+
+    // Prefix sets describe half-open slot ranges without twelve repeated predicates.
+    function prefix(count) {
+      return ['','s00','s00,s01','s00,s01,s02','s00,s01,s02,s03','s00,s01,s02,s03,s04','s00,s01,s02,s03,s04,s05','s00,s01,s02,s03,s04,s05,s06','s00,s01,s02,s03,s04,s05,s06,s07','s00,s01,s02,s03,s04,s05,s06,s07,s08','s00,s01,s02,s03,s04,s05,s06,s07,s08,s09','s00,s01,s02,s03,s04,s05,s06,s07,s08,s09,s10','s00,s01,s02,s03,s04,s05,s06,s07,s08,s09,s10,s11'][count < 0 ? 0 : count > 12 ? 12 : count].split(',').toSet().difference([''].toSet());
+    }
+    function rangeKeys(b,roomId,base) {
+      return b == null || b.status != 'approved' || b.roomId != roomId ? [].toSet()
+        : prefix(int((b.endAt.toMillis() - base) / 1800000))
+          .difference(prefix(int((b.startAt.toMillis() - base) / 1800000)));
+    }
+    function owned(slots,bookingId) { return slots.diff({'s00':bookingId,'s01':bookingId,'s02':bookingId,'s03':bookingId,'s04':bookingId,'s05':bookingId,'s06':bookingId,'s07':bookingId,'s08':bookingId,'s09':bookingId,'s10':bookingId,'s11':bookingId}).unchangedKeys(); }
+    function emptySlots() { return {'s00':'','s01':'','s02':'','s03':'','s04':'','s05':'','s06':'','s07':'','s08':'','s09':'','s10':'','s11':''}; }
+    function blockAfter(n,roomId,blockId,bookingId) {
+      let block = getAfter(/databases/$(database)/documents/rooms/$(roomId)/occupancy/$(blockId)).data;
+      // The new version forces this block through occupancyWrite in this transaction.
+      // occupancyWrite independently validates all old/new and unrelated slots.
+      return [block.lastMutationBookingId,block.lastMutationVersion,block.updatedAt] == [bookingId,n.version,request.time];
+    }
+    function isNewBlock(n,roomId,blockId) {
+      return n.status == 'approved' && n.roomId == roomId && blockId in n.occupancyBlockIds;
+    }
+    function locks(b,n,bookingId) {
+      return (n.status != 'approved' || (blockAfter(n,n.roomId,n.occupancyBlockIds[0],bookingId)
+        && (n.occupancyBlockIds.size() == 1 || blockAfter(n,n.roomId,n.occupancyBlockIds[1],bookingId))))
+        && (b == null || b.status != 'approved' || (
+          (isNewBlock(n,b.roomId,b.occupancyBlockIds[0]) || blockAfter(n,b.roomId,b.occupancyBlockIds[0],bookingId))
+          && (b.occupancyBlockIds.size() == 1 || isNewBlock(n,b.roomId,b.occupancyBlockIds[1])
+            || blockAfter(n,b.roomId,b.occupancyBlockIds[1],bookingId))));
+    }
+    match /bookings/{bookingId} {
+      allow get: if admin() || (organizer() && (!exists(/databases/$(database)/documents/bookings/$(bookingId)) || resource.data.organizerId == request.auth.uid));
+      allow list: if bounded() && ownerOrAdmin(resource.data);
+      allow create: if validBooking(request.resource.data) && createAllowed(request.resource.data)
+        && mirrors(null,request.resource.data,bookingId) && locks(null,request.resource.data,bookingId);
+      allow update: if validBooking(request.resource.data) && transition(resource.data,request.resource.data)
+        && mirrors(resource.data,request.resource.data,bookingId) && locks(resource.data,request.resource.data,bookingId);
+      allow delete: if false;
+    }
+    function changedBooking(b,n) { return n.updatedAt == request.time && (b == null ? n.version == 1 : n.version == b.version + 1); }
+    function beforeBooking(bookingId) {
+      let p = /databases/$(database)/documents/bookings/$(bookingId);
+      return exists(p) ? get(p).data : null;
+    }
+    match /publicEvents/{bookingId} {
+      allow get: if true;
+      allow list: if bounded();
+      allow create, update: if admin() && request.resource.data.schemaVersion is int && request.resource.data.bookingVersion is int
+        && changedBooking(beforeBooking(bookingId),getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data)
+        && getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.status == 'approved'
+        && request.resource.data == publicData(getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data,
+          resource == null ? request.time : resource.data.publishedAt);
+      allow delete: if active() && changedBooking(beforeBooking(bookingId),getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data)
+        && getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.status == 'cancelled';
+    }
+    match /bookings/{bookingId}/history/{version} {
+      allow get: if ownerOrAdmin(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+      allow list: if bounded() && ownerOrAdmin(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+      allow create: if active() && version == string(request.resource.data.version)
+        && changedBooking(beforeBooking(bookingId),getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data)
+        && request.resource.data == historyData(beforeBooking(bookingId),getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data);
+      allow update, delete: if false;
+    }
+    function occupancyWrite(roomId,blockId) {
+      let d = request.resource.data;
+      let bookingId = d.lastMutationBookingId;
+      let b = beforeBooking(bookingId);
+      let n = getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data;
+      let previous = resource == null ? emptySlots() : resource.data.slots;
+      let oldKeys = rangeKeys(b,roomId,d.blockStartAt.toMillis());
+      let newKeys = rangeKeys(n,roomId,d.blockStartAt.toMillis());
+      return exact(d,['blockStartAt','slots','lastMutationBookingId','lastMutationVersion','updatedAt','updatedBy','schemaVersion'])
+        && d.blockStartAt is timestamp && d.blockStartAt.toMillis() >= 0
+        && d.blockStartAt == timestamp.value(d.blockStartAt.toMillis())
+        && d.blockStartAt.toMillis() % 21600000 == 0 && blockId == string(int(d.blockStartAt.toMillis() / 1000))
+        && d.slots is map && exact(d.slots,['s00','s01','s02','s03','s04','s05','s06','s07','s08','s09','s10','s11'])
+        && id(bookingId) && d.updatedAt == request.time && d.updatedBy == request.auth.uid && d.schemaVersion is int && d.schemaVersion == 1
+        && d.lastMutationVersion is int && d.lastMutationVersion == n.version
+        && changedBooking(b,n) && (isNewBlock(n,roomId,blockId) || b != null && isNewBlock(b,roomId,blockId))
+        && owned(previous,bookingId).hasAll(oldKeys)
+        && owned(previous,bookingId).union(owned(previous,'')).hasAll(newKeys)
+        && owned(d.slots,bookingId).hasAll(newKeys)
+        && owned(d.slots,'').hasAll(oldKeys.difference(newKeys))
+        && d.slots.diff(previous).affectedKeys().difference(oldKeys.union(newKeys)).size() == 0;
+    }
+    match /rooms/{roomId}/occupancy/{blockId} {
+      allow get: if admin() || organizer();
+      allow list: if admin() && bounded();
+      allow create, update: if (admin() || organizer()) && occupancyWrite(roomId,blockId);
+      allow delete: if false;
+    }
+    function supportStaff() { return role() in ['admin','developer']; }
+    function validTicket(d) {
+      return exact(d,['type','title','body','status','priority','createdBy','createdAt','updatedBy','updatedAt',
+        'lastActivityAt','version','lastAction','schemaVersion','lastHistoryId','lastCommentId'])
+        && d.type in ['bug','feature','feedback'] && text(d.title,3,160) && text(d.body,10,10000)
+        && d.status in ['new','accepted','in_progress','done','rejected','closed']
+        && d.priority in ['low','normal','high'] && id(d.createdBy) && d.createdAt is timestamp
+        && d.updatedBy == request.auth.uid && d.updatedAt == request.time && d.lastActivityAt == request.time
+        && d.version is int && d.version > 0 && d.schemaVersion is int && d.schemaVersion == 1
+        && d.lastHistoryId == string(d.version) && (d.lastCommentId == null || id(d.lastCommentId));
+    }
+    function ticketTransition(b,n) {
+      let developer = role() == 'developer';
+      return (developer && ((b.status == 'new' && n.status in ['accepted','rejected'])
+        || (b.status == 'accepted' && n.status in ['in_progress','rejected'])
+        || (b.status == 'in_progress' && n.status == 'done')
+        || (b.status in ['done','rejected'] && n.status == 'closed')
+        || (b.status in ['done','rejected','closed'] && n.status == 'accepted')))
+        || (admin() && ((b.status in ['done','rejected'] && n.status == 'closed')
+          || (b.status == 'done' && n.status == 'accepted')));
+    }
+    function ticketHistory(b,n,commentId) {
+      return {'version':n.version,'action':n.lastAction,'actorId':request.auth.uid,'actorRole':role(),'at':request.time,
+        'fromStatus':b == null ? null : b.status,'toStatus':n.status,'commentId':commentId,
+        'fromPriority':b == null ? null : b.priority,'toPriority':n.priority};
+    }
+    function ticketLinks(ticketId,b,n) {
+      let commentId = b == null || n.lastCommentId == b.lastCommentId ? null : n.lastCommentId;
+      let h = getAfter(/databases/$(database)/documents/supportTickets/$(ticketId)/history/$(n.lastHistoryId)).data;
+      return h == ticketHistory(b,n,commentId)
+        && (commentId == null || getAfter(/databases/$(database)/documents/supportTickets/$(ticketId)/comments/$(commentId)).data.ticketVersion == n.version);
+    }
+    function ticketUpdate(b,n) {
+      let commented = n.lastCommentId != b.lastCommentId && n.lastCommentId != null;
+      return n.version == b.version + 1
+        && n.diff(b).affectedKeys().hasOnly(['status','priority','updatedBy','updatedAt','lastActivityAt','version','lastAction','lastHistoryId','lastCommentId'])
+        && ((n.lastAction == 'commented' && commented && n.status == b.status && n.priority == b.priority)
+          || (n.lastAction == 'priority_changed' && role() == 'developer' && n.priority != b.priority && n.status == b.status && !commented && n.lastCommentId == b.lastCommentId)
+          || (n.lastAction == 'status_changed' && n.priority == b.priority && ticketTransition(b,n)
+            && (n.lastCommentId == b.lastCommentId || commented)
+            && (!(n.status == 'accepted' && b.status in ['done','rejected','closed']) || commented)));
+    }
+    match /supportTickets/{ticketId} {
+      allow get: if supportStaff();
+      allow list: if supportStaff() && bounded();
+      allow create: if admin() && validTicket(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid && request.resource.data.createdAt == request.time
+        && request.resource.data.version == 1 && request.resource.data.status == 'new'
+        && request.resource.data.priority == 'normal' && request.resource.data.lastAction == 'created'
+        && request.resource.data.lastCommentId == null && ticketLinks(ticketId,null,request.resource.data);
+      allow update: if supportStaff() && validTicket(request.resource.data)
+        && ticketUpdate(resource.data,request.resource.data) && ticketLinks(ticketId,resource.data,request.resource.data);
+      allow delete: if false;
+      match /history/{version} {
+        allow get: if supportStaff();
+        allow list: if supportStaff() && bounded();
+        allow create: if supportStaff() && version == string(request.resource.data.version)
+          && supportHistoryWrite(ticketId,request.resource.data);
+        allow update, delete: if false;
+      }
+      match /comments/{commentId} {
+        allow get: if supportStaff();
+        allow list: if supportStaff() && bounded();
+        allow create: if supportStaff() && supportCommentWrite(ticketId,commentId,request.resource.data);
+        allow update, delete: if false;
+      }
+    }
+    function ticketBefore(ticketId) {
+      let p = /databases/$(database)/documents/supportTickets/$(ticketId);
+      return exists(p) ? get(p).data : null;
+    }
+    function supportHistoryWrite(ticketId,h) {
+      let b = ticketBefore(ticketId);
+      let n = getAfter(/databases/$(database)/documents/supportTickets/$(ticketId)).data;
+      let commentId = b == null || b.lastCommentId == n.lastCommentId ? null : n.lastCommentId;
+      return changedBooking(b,n) && h == ticketHistory(b,n,commentId);
+    }
+    function supportCommentWrite(ticketId,commentId,c) {
+      let b = ticketBefore(ticketId);
+      let n = getAfter(/databases/$(database)/documents/supportTickets/$(ticketId)).data;
+      return b != null && changedBooking(b,n) && n.lastCommentId == commentId && b.lastCommentId != commentId
+        && n.lastAction in ['commented','status_changed']
+        && exact(c,['body','authorId','authorRole','createdAt','ticketVersion','schemaVersion'])
+        && text(c.body,1,5000) && c.authorId == request.auth.uid && c.authorRole == role()
+        && c.createdAt == request.time && c.ticketVersion is int && c.ticketVersion == n.version
+        && c.schemaVersion is int && c.schemaVersion == 1;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
+

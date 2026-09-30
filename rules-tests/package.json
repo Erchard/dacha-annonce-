@@ -1,0 +1,14 @@
+{
+  "name": "dacha-rules-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "measure": "node measure.mjs",
+    "seed": "node seed.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0"
+  }
+}

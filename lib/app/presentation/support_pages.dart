@@ -1,13 +1,18 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/domain/page.dart';
+import '../../core/errors/domain_exception.dart';
 import '../../features/support/support_repository.dart';
 import '../../features/auth/domain/user_profile.dart';
 import '../providers.dart';
 import 'shared.dart';
+import 'support_draft.dart';
 
 String ticketStatusLabel(String value) => switch (value) {
   'new' => 'Нове',
@@ -82,7 +87,7 @@ class _SupportPageState extends ConsumerState<SupportPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Звернення бачать адміністрація та розробник. Автоматичні email-сповіщення ще не підключені.',
+          'Звернення бачать адміністрація та розробник. Коментарі дублюються адміністратору на пошту (перевірка кожні 5 хв після увімкнення розсилки).',
         ),
         const SizedBox(height: 16),
         Wrap(
@@ -153,17 +158,69 @@ class _NewTicketPageState extends ConsumerState<NewTicketPage> {
   late final String id;
   bool busy = false;
   Object? error;
+  final pendingPhotos = <({String name, String type, Uint8List bytes})>[];
   @override
   void initState() {
     super.initState();
     id = ref.read(supportRepositoryProvider).newId();
+    final draft = loadSupportDraft();
+    if (draft != null) {
+      type = draft.type;
+      title.text = draft.title;
+      body.text = draft.body;
+    }
+    title.addListener(_persistDraft);
+    body.addListener(_persistDraft);
   }
+
+  void _persistDraft() =>
+      saveSupportDraft(type: type, title: title.text, body: body.text);
 
   @override
   void dispose() {
+    title.removeListener(_persistDraft);
+    body.removeListener(_persistDraft);
     title.dispose();
     body.dispose();
     super.dispose();
+  }
+
+  Future<void> pickPhotos() async {
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+    );
+    if (files.isEmpty || !mounted) return;
+    setState(() {
+      error = null;
+    });
+    for (final file in files) {
+      if (pendingPhotos.length >= maxAttachmentsPerTicket) break;
+      final bytes = await file.readAsBytes();
+      if (!mounted || bytes.isEmpty) continue;
+      final lower = file.name.toLowerCase();
+      final contentType = lower.endsWith('.png')
+          ? 'image/png'
+          : lower.endsWith('.webp')
+          ? 'image/webp'
+          : 'image/jpeg';
+      if (bytes.length > maxAttachmentBytes) {
+        setState(
+          () => error = const DomainException(
+            ErrorCode.validation,
+            field: 'attachment',
+          ),
+        );
+        continue;
+      }
+      setState(
+        () => pendingPhotos.add((
+          name: file.name,
+          type: contentType,
+          bytes: bytes,
+        )),
+      );
+    }
   }
 
   Future<void> submit() async {
@@ -173,9 +230,17 @@ class _NewTicketPageState extends ConsumerState<NewTicketPage> {
       error = null;
     });
     try {
-      await ref
-          .read(supportRepositoryProvider)
-          .create(id, type: type, title: title.text, body: body.text);
+      final repo = ref.read(supportRepositoryProvider);
+      await repo.create(id, type: type, title: title.text, body: body.text);
+      clearSupportDraft();
+      for (final photo in pendingPhotos) {
+        await repo.addAttachment(
+          id,
+          fileName: photo.name,
+          contentType: photo.type,
+          bytes: photo.bytes,
+        );
+      }
       if (mounted) context.go('/support/$id');
     } catch (e) {
       if (mounted) setState(() => error = e);
@@ -199,7 +264,12 @@ class _NewTicketPageState extends ConsumerState<NewTicketPage> {
               for (final t in ticketTypes)
                 DropdownMenuItem(value: t, child: Text(typeLabel(t))),
             ],
-            onChanged: busy ? null : (v) => type = v!,
+            onChanged: busy
+                ? null
+                : (v) {
+                    type = v!;
+                    _persistDraft();
+                  },
           ),
           TextFormField(
             controller: title,
@@ -214,16 +284,65 @@ class _NewTicketPageState extends ConsumerState<NewTicketPage> {
             maxLength: 10000,
             minLines: 5,
             maxLines: 12,
-            decoration: const InputDecoration(labelText: 'Опис'),
+            decoration: const InputDecoration(
+              labelText: 'Опис',
+              helperText: 'Чорнетка зберігається в цьому браузері, навіть якщо відволіктися.',
+            ),
             validator: (v) => (v?.trim().runes.length ?? 0) < 10
                 ? 'Щонайменше 10 символів'
                 : null,
           ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: busy || pendingPhotos.length >= maxAttachmentsPerTicket
+                ? null
+                : pickPhotos,
+            icon: const Icon(Icons.image_outlined),
+            label: Text(
+              'Додати фото (${pendingPhotos.length}/$maxAttachmentsPerTicket)',
+            ),
+          ),
+          const Text('JPEG, PNG або WebP до 700 КБ кожне.'),
+          if (pendingPhotos.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < pendingPhotos.length; i++)
+                  Stack(
+                    children: [
+                      Image.memory(
+                        pendingPhotos[i].bytes,
+                        width: 96,
+                        height: 96,
+                        fit: BoxFit.cover,
+                      ),
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: IconButton(
+                          tooltip: 'Прибрати',
+                          onPressed: busy
+                              ? null
+                              : () => setState(() => pendingPhotos.removeAt(i)),
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ],
           if (error != null) Problem(error!),
           const SizedBox(height: 16),
           FilledButton(
             onPressed: busy ? null : submit,
             child: Text(busy ? 'Збереження…' : 'Створити звернення'),
+          ),
+          TextButton(
+            onPressed: busy ? null : () => context.go('/support'),
+            child: const Text('До списку звернень'),
           ),
         ],
       ),
@@ -240,7 +359,7 @@ class TicketPage extends ConsumerStatefulWidget {
 
 class _TicketPageState extends ConsumerState<TicketPage> {
   Ticket? ticket;
-  List<SupportEntry> comments = [], history = [];
+  List<SupportEntry> comments = [], history = [], attachments = [];
   PageCursor? commentNext, historyNext;
   Object? error;
   bool busy = true;
@@ -264,18 +383,22 @@ class _TicketPageState extends ConsumerState<TicketPage> {
     });
     try {
       final repo = ref.read(supportRepositoryProvider),
-          t = await ref.read(supportRepositoryProvider).get(widget.id);
+          t = await repo.get(widget.id);
       final c = t == null
           ? null
           : await repo.entries(widget.id, 'comments', PageRequest());
       final h = t == null
           ? null
           : await repo.entries(widget.id, 'history', PageRequest());
+      final a = t == null
+          ? null
+          : await repo.entries(widget.id, 'attachments', PageRequest());
       if (mounted) {
         setState(() {
           ticket = t;
           comments = c?.items ?? [];
           history = h?.items ?? [];
+          attachments = a?.items ?? [];
           commentNext = c?.next;
           historyNext = h?.next;
         });
@@ -297,6 +420,48 @@ class _TicketPageState extends ConsumerState<TicketPage> {
     try {
       await action(ref.read(supportRepositoryProvider), ticket!);
       comment.clear();
+      await load();
+    } catch (e) {
+      if (mounted) setState(() => error = e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> addPhotos() async {
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+    );
+    if (files.isEmpty || !mounted) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final repo = ref.read(supportRepositoryProvider);
+      for (final file in files) {
+        final bytes = await file.readAsBytes();
+        if (bytes.isEmpty) continue;
+        if (bytes.length > maxAttachmentBytes) {
+          throw const DomainException(
+            ErrorCode.validation,
+            field: 'attachment',
+          );
+        }
+        final lower = file.name.toLowerCase();
+        final contentType = lower.endsWith('.png')
+            ? 'image/png'
+            : lower.endsWith('.webp')
+            ? 'image/webp'
+            : 'image/jpeg';
+        await repo.addAttachment(
+          widget.id,
+          fileName: file.name,
+          contentType: contentType,
+          bytes: bytes,
+        );
+      }
       await load();
     } catch (e) {
       if (mounted) setState(() => error = e);
@@ -335,6 +500,13 @@ class _TicketPageState extends ConsumerState<TicketPage> {
     }
   }
 
+  Uint8List? attachmentBytes(SupportEntry entry) {
+    final raw = entry.data['bytes'];
+    if (raw is Blob) return raw.bytes;
+    if (raw is Uint8List) return raw;
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = ticket,
@@ -354,6 +526,36 @@ class _TicketPageState extends ConsumerState<TicketPage> {
             ),
             const SizedBox(height: 12),
             SelectableText(t.body),
+            const SizedBox(height: 16),
+            Text('Фото', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            if (attachments.isEmpty) const Text('Фото ще не додані.'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final a in attachments)
+                  if (attachmentBytes(a) case final bytes?)
+                    Tooltip(
+                      message: '${a.data['fileName']}',
+                      child: Image.memory(
+                        bytes,
+                        width: 140,
+                        height: 140,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+              ],
+            ),
+            OutlinedButton.icon(
+              onPressed: busy || attachments.length >= maxAttachmentsPerTicket
+                  ? null
+                  : addPhotos,
+              icon: const Icon(Icons.image_outlined),
+              label: Text(
+                'Додати фото (${attachments.length}/$maxAttachmentsPerTicket)',
+              ),
+            ),
             const Divider(height: 32),
             TextField(
               controller: comment,
@@ -420,6 +622,10 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                 TextButton(
                   onPressed: busy ? null : load,
                   child: const Text('Оновити'),
+                ),
+                TextButton(
+                  onPressed: busy ? null : () => context.go('/support'),
+                  child: const Text('До списку звернень'),
                 ),
               ],
             ),

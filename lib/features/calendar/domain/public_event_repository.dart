@@ -7,6 +7,7 @@ abstract interface class PublicEventRepository {
     DateTime end,
     PageRequest page, {
     String? roomId,
+    List<String> directions = const [],
   });
   Future<PublicEvent?> getPublishedEvent(String id);
 }

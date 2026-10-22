@@ -5,6 +5,7 @@ abstract interface class AuthRepository {
   Stream<AuthSession?> get session;
   Future<void> register(String email, String password, String displayName);
   Future<void> signIn(String email, String password);
+  Future<void> setRememberSignedIn(bool remember);
   Future<void> signOut();
   Future<void> sendVerification();
   Future<void> resetPassword(String email);

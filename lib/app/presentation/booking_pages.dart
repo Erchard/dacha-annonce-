@@ -1,7 +1,9 @@
+import '../../features/bookings/domain/event_details.dart';
+import '../../features/bookings/data/booking_service.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/domain/page.dart';
 import '../../core/errors/domain_exception.dart';
@@ -31,7 +33,7 @@ class _BookingsPageState extends ConsumerState<BookingsPage> {
   @override
   void initState() {
     super.initState();
-    status = widget.forAdmin ? BookingStatus.pending : null;
+    status = null;
     Future.microtask(() => load(reset: true));
   }
 
@@ -67,7 +69,9 @@ class _BookingsPageState extends ConsumerState<BookingsPage> {
 
   @override
   Widget build(BuildContext context) => AppFrame(
-    title: widget.forAdmin ? 'Керування' : 'Мої заявки',
+    title: widget.forAdmin
+        ? 'Керування подіями та заявками'
+        : 'Мої події та заявки',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -106,7 +110,9 @@ class _BookingsPageState extends ConsumerState<BookingsPage> {
               value: null,
               child: Text('Усі статуси'),
             ),
-            for (final value in BookingStatus.values)
+            for (final value in BookingStatus.values.where(
+              (v) => v != BookingStatus.deleted,
+            ))
               DropdownMenuItem(value: value, child: Text(statusLabel(value))),
           ],
           onChanged: busy
@@ -120,11 +126,15 @@ class _BookingsPageState extends ConsumerState<BookingsPage> {
         if (error != null)
           Problem(error!, retry: () => load(reset: items.isEmpty)),
         if (busy) const LinearProgressIndicator(),
-        if (!busy && error == null && items.isEmpty)
-          const Text('Заявок із цим статусом немає.'),
+        if (!busy && error == null && items.isEmpty && next == null)
+          Text(
+            widget.forAdmin ? 'Заявок із цим статусом немає.' : 'Немає заявок від сьогодні. Минулі події в цьому списку не показуються.',
+          ),
         if (items.isNotEmpty)
           Text(
-            'Завантажено заявок: ${items.length}${next != null ? ' · доступні наступні сторінки' : ''}',
+            widget.forAdmin
+                ? 'Завантажено заявок: ${items.length}${next != null ? ' · доступні наступні сторінки' : ''}'
+                : 'Від сьогодні за календарем: ${items.length}${next != null ? ' · є наступні' : ''}',
           ),
         for (final booking in items)
           Card(
@@ -171,6 +181,8 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
   final title = TextEditingController(),
       description = TextEditingController(),
       responsible = TextEditingController(),
+      contactPhone = TextEditingController(),
+      notes = TextEditingController(),
       date = TextEditingController(),
       start = TextEditingController(text: '10:00'),
       end = TextEditingController(text: '11:00'),
@@ -178,6 +190,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
   late String id;
   String? seriesToken;
   bool weekly = false;
+  List<String> directions = [];
   Booking? original;
   List<Room> rooms = [];
   String? roomId, message;
@@ -188,10 +201,89 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
   void initState() {
     super.initState();
     id = widget.id ?? ref.read(bookingServiceProvider).newId();
-    date.text = DateFormat('yyyy-MM-dd').format(
-      TimeZoneService().toKyiv(DateTime.now().add(const Duration(days: 1))),
-    );
+    final kyiv = TimeZoneService().toKyiv(DateTime.now());
+    date.text = formatCivilDate(DateTime(kyiv.year, kyiv.month, kyiv.day + 1));
+    applyDefaultTimesForSelectedDay();
     Future.microtask(load);
+  }
+
+  DateTime? civilDate() => parseCivilDate(date.text);
+
+  String slotLabel(int hour, int minute) =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+  /// Next half-hour in Kyiv that is still in the future for [day], or null if none.
+  (int, int)? nextFutureSlot(DateTime day) {
+    final now = TimeZoneService().toKyiv(DateTime.now());
+    final today = DateTime(now.year, now.month, now.day);
+    var hour = 10;
+    var minute = 0;
+    if (day == today) {
+      hour = now.hour;
+      minute = now.minute < 30 ? 30 : 0;
+      if (now.minute >= 30) hour += 1;
+      if (hour >= 24) return null;
+    } else if (day.isBefore(today)) {
+      return null;
+    }
+    return (hour, minute);
+  }
+
+  void applyDefaultTimesForSelectedDay() {
+    final day = civilDate();
+    if (day == null) return;
+    if (chosenStartStillValid(day)) return;
+    final slot = nextFutureSlot(day);
+    if (slot == null) {
+      start.text = '10:00';
+      end.text = '11:00';
+      return;
+    }
+    final (hour, minute) = slot;
+    start.text = slotLabel(hour, minute);
+    final endMinute = minute;
+    final endHour = hour + 1;
+    end.text = endHour < 24 ? slotLabel(endHour, endMinute) : slotLabel(23, 30);
+  }
+
+  bool chosenStartStillValid(DateTime day) {
+    final parts = start.text.split(':');
+    if (parts.length != 2) return false;
+    final hour = int.tryParse(parts[0]), minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return false;
+    final candidates = TimeZoneService().candidates(
+      year: day.year,
+      month: day.month,
+      day: day.day,
+      hour: hour,
+      minute: minute,
+    );
+    return candidates.isNotEmpty &&
+        candidates.first.isAfter(DateTime.now().toUtc());
+  }
+
+  Future<void> pickClock(TextEditingController controller) async {
+    final parts = controller.text.split(':');
+    final initial = TimeOfDay(
+      hour: int.tryParse(parts.isEmpty ? '' : parts[0]) ?? 10,
+      minute: int.tryParse(parts.length < 2 ? '' : parts[1]) ?? 0,
+    );
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final minute = picked.minute < 15
+        ? 0
+        : picked.minute < 45
+        ? 30
+        : 0;
+    final hour = picked.minute >= 45 ? (picked.hour + 1) % 24 : picked.hour;
+    setState(() => controller.text = slotLabel(hour, minute));
   }
 
   @override
@@ -200,6 +292,8 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
       title,
       description,
       responsible,
+      contactPhone,
+      notes,
       date,
       start,
       end,
@@ -227,8 +321,10 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
       if (booking != null &&
           (booking.status != BookingStatus.pending &&
               (booking.status != BookingStatus.approved ||
-                  ref.read(profileProvider).asData?.value?.role !=
-                      UserRole.admin))) {
+                  (ref.read(profileProvider).asData?.value?.role !=
+                          UserRole.admin &&
+                      ref.read(profileProvider).asData?.value?.canPublish !=
+                          true)))) {
         throw const DomainException(ErrorCode.permissionDenied);
       }
       final list = page.items.toList();
@@ -246,8 +342,13 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
             title.text = booking.draft.title;
             description.text = booking.draft.description;
             responsible.text = booking.draft.responsibleName;
-            date.text = DateFormat('yyyy-MM-dd')
-                .format(TimeZoneService().toKyiv(booking.draft.interval.start));
+            contactPhone.text = booking.draft.contactPhone;
+            notes.text = booking.draft.notes;
+            directions = [...booking.draft.directions];
+            final local = TimeZoneService().toKyiv(
+              booking.draft.interval.start,
+            );
+            date.text = formatCivilDate(local);
             start.text = localTime(booking.draft.interval.start);
             end.text = localTime(booking.draft.interval.end);
           } else {
@@ -304,10 +405,20 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
       message = null;
     });
     try {
-      final day = DateTime.parse(date.text);
+      final day = civilDate();
+      if (day == null) {
+        setState(() => message = 'Перевірте дату.');
+        return;
+      }
+      if (!chosenStartStillValid(day)) {
+        setState(
+          () => message = 'Початок має бути пізніше за поточний час (Київ). Введений час не змінюється сам — оберіть пізніший.',
+        );
+        return;
+      }
       final first = await instant(day, start.text);
       if (first == null) return;
-      // An end time earlier than the start denotes the next calendar day.
+      // An end time earlier than or equal to the start denotes the next calendar day.
       final nextDay = end.text.compareTo(start.text) <= 0
           ? DateTime(day.year, day.month, day.day + 1)
           : day;
@@ -318,16 +429,26 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
         title: title.text,
         description: description.text,
         responsibleName: responsible.text,
+        contactPhone: contactPhone.text,
+        notes: notes.text,
+        directions: directions,
         interval: BookingInterval(first, last),
       );
-      if (weekly && widget.approved && original == null) {
+      if (weekly &&
+          (widget.approved ||
+              ref.read(profileProvider).asData?.value?.canPublish == true) &&
+          original == null) {
         await submitWeekly(draft);
         return;
       }
       final profile = ref.read(profileProvider).asData!.value!;
       BookingAction action;
       if (original == null) {
-        action = widget.approved && profile.role == UserRole.admin
+        action =
+            (widget.approved ||
+                    ref.read(profileProvider).asData?.value?.canPublish ==
+                        true) &&
+                (profile.role == UserRole.admin || profile.canPublish)
             ? BookingAction.createApproved
             : BookingAction.createPending;
       } else if (original!.status == BookingStatus.approved &&
@@ -408,11 +529,18 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
       existing.draft.title == draft.title &&
       existing.draft.description == draft.description &&
       existing.draft.responsibleName == draft.responsibleName &&
+      existing.draft.contactPhone == draft.contactPhone &&
+      existing.draft.notes == draft.notes &&
+      existing.draft.directions.join("|") == draft.directions.join("|") &&
       existing.draft.interval.start == date.interval!.start &&
       existing.draft.interval.end == date.interval!.end;
 
   Future<void> submitWeekly(BookingDraft draft) async {
-    final untilDay = DateTime.parse(until.text);
+    final untilDay = parseCivilDate(until.text);
+    if (untilDay == null) {
+      setState(() => message = 'Перевірте дату завершення повторення.');
+      return;
+    }
     final dates = weeklyDates(
       start: draft.interval.start,
       end: draft.interval.end,
@@ -514,6 +642,9 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                 title: draft.title,
                 description: draft.description,
                 responsibleName: draft.responsibleName,
+                contactPhone: draft.contactPhone,
+                notes: draft.notes,
+                directions: draft.directions,
                 interval: date.interval!,
               ),
             );
@@ -565,7 +696,8 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
     return AppFrame(
       title: original != null
           ? 'Редагувати заявку'
-          : widget.approved
+          : (widget.approved ||
+                ref.read(profileProvider).asData?.value?.canPublish == true)
           ? 'Створити подію'
           : 'Подати заявку',
       child: loading
@@ -607,6 +739,56 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                         ? 'До 80 символів.'
                         : null,
                   ),
+                  TextFormField(
+                    controller: contactPhone,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 32,
+                    decoration: const InputDecoration(
+                      labelText: 'Телефон відповідального',
+                      helperText:
+                          'Необов’язково. Буде видимий відвідувачам сайту.',
+                      helperMaxLines: 2,
+                    ),
+                    validator: (value) {
+                      try {
+                        checkedContactPhone(value ?? '');
+                        return null;
+                      } on DomainException {
+                        return 'Укажіть телефон: цифри, +, пробіли, дужки або дефіси.';
+                      }
+                    },
+                  ),
+                  TextFormField(
+                    controller: notes,
+                    maxLength: 500,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Примітки до розкладу',
+                      hintText: 'Що взяти із собою, умови участі…',
+                    ),
+                  ),
+                  const Text('Напрямки події — можна вибрати кілька'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      for (final direction in eventDirections)
+                        FilterChip(
+                          label: Text(direction),
+                          selected: directions.contains(direction),
+                          onSelected: busy
+                              ? null
+                              : (selected) => setState(() {
+                                  if (selected) {
+                                    directions.add(direction);
+                                  } else {
+                                    directions.remove(direction);
+                                  }
+                                }),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     key: ValueKey('$roomId:${rooms.length}'),
                     initialValue: roomId,
@@ -654,33 +836,33 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                   TextFormField(
                     controller: date,
                     decoration: InputDecoration(
-                      labelText: 'Дата (РРРР-ММ-ДД)',
+                      labelText: 'Дата (ДД.ММ.РРРР)',
                       suffixIcon: IconButton(
                         tooltip: 'Вибрати дату',
                         icon: const Icon(Icons.calendar_today),
                         onPressed: () async {
                           final initial =
-                              DateTime.tryParse(date.text) ?? DateTime.now();
+                              civilDate() ??
+                              TimeZoneService().toKyiv(DateTime.now());
                           final selected = await showDatePicker(
                             context: context,
                             initialDate: initial,
                             firstDate: DateTime(2020),
                             lastDate: DateTime(2100),
                           );
-                          if (selected != null) {
-                            date.text = DateFormat('yyyy-MM-dd')
-                                .format(selected);
+                          if (selected != null && mounted) {
+                            setState(() {
+                              date.text = formatCivilDate(selected);
+                              applyDefaultTimesForSelectedDay();
+                            });
                           }
                         },
                       ),
                     ),
-                    validator: (v) {
-                      final parsed = DateTime.tryParse(v ?? '');
-                      return parsed == null ||
-                              DateFormat('yyyy-MM-dd').format(parsed) != v
-                          ? 'Перевірте дату.'
-                          : null;
-                    },
+                    onChanged: (_) => setState(applyDefaultTimesForSelectedDay),
+                    validator: (v) => parseCivilDate(v ?? '') == null
+                        ? 'Дата у форматі ДД.ММ.РРРР, наприклад 02.10.2026.'
+                        : null,
                   ),
                   Wrap(
                     spacing: 16,
@@ -690,8 +872,13 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                         width: 220,
                         child: TextFormField(
                           controller: start,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Початок (Київ)',
+                            suffixIcon: IconButton(
+                              tooltip: 'Вибрати початок',
+                              icon: const Icon(Icons.schedule),
+                              onPressed: busy ? null : () => pickClock(start),
+                            ),
                           ),
                           validator: timeValidator,
                         ),
@@ -700,8 +887,13 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                         width: 220,
                         child: TextFormField(
                           controller: end,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Завершення (Київ)',
+                            suffixIcon: IconButton(
+                              tooltip: 'Вибрати завершення',
+                              icon: const Icon(Icons.schedule),
+                              onPressed: busy ? null : () => pickClock(end),
+                            ),
                           ),
                           validator: timeValidator,
                         ),
@@ -710,9 +902,12 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Крок — 30 хвилин. Тривалість — до 6 годин. Раніший час завершення означає наступний день.',
+                    'Крок — 30 хвилин. Тривалість — до 6 годин. Для сьогодні час початку й завершення має бути пізніше за зараз. Раніший час завершення означає наступний день.',
                   ),
-                  if (widget.approved && original == null) ...[
+                  if ((widget.approved ||
+                          ref.read(profileProvider).asData?.value?.canPublish ==
+                              true) &&
+                      original == null) ...[
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Повторювати щотижня до дати'),
@@ -725,14 +920,14 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                       TextFormField(
                         controller: until,
                         decoration: InputDecoration(
-                          labelText: 'Повторювати до (РРРР-ММ-ДД)',
+                          labelText: 'Повторювати до (ДД.ММ.РРРР)',
                           suffixIcon: IconButton(
                             tooltip: 'Вибрати дату завершення',
                             icon: const Icon(Icons.calendar_today),
                             onPressed: () async {
                               final initial =
-                                  DateTime.tryParse(until.text) ??
-                                  DateTime.tryParse(date.text) ??
+                                  parseCivilDate(until.text) ??
+                                  parseCivilDate(date.text) ??
                                   DateTime.now();
                               final selected = await showDatePicker(
                                 context: context,
@@ -741,19 +936,15 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                                 lastDate: DateTime(2100),
                               );
                               if (selected != null) {
-                                until.text = DateFormat('yyyy-MM-dd')
-                                    .format(selected);
+                                until.text = formatCivilDate(selected);
                               }
                             },
                           ),
                         ),
                         validator: (value) {
                           if (!weekly) return null;
-                          final parsed = DateTime.tryParse(value ?? '');
-                          return parsed == null ||
-                                  DateFormat('yyyy-MM-dd').format(parsed) !=
-                                      value
-                              ? 'Перевірте дату завершення.'
+                          return parseCivilDate(value ?? '') == null
+                              ? 'Дата у форматі ДД.ММ.РРРР.'
                               : null;
                         },
                       ),
@@ -857,6 +1048,8 @@ class _BookingDetailPageState extends ConsumerState<BookingDetailPage> {
   Widget build(BuildContext context) {
     final profile = ref.watch(profileProvider).asData?.value;
     final admin = profile?.role == UserRole.admin;
+    final publisher =
+        profile?.role == UserRole.organizer && profile?.canPublish == true;
     return AppFrame(
       title: 'Заявка',
       child: FutureBuilder(
@@ -944,7 +1137,9 @@ class _BookingDetailPageState extends ConsumerState<BookingDetailPage> {
                     ),
                   ],
                   if (active &&
-                      (admin || booking.status == BookingStatus.pending))
+                      (admin ||
+                          publisher ||
+                          booking.status == BookingStatus.pending))
                     OutlinedButton(
                       onPressed: () =>
                           context.go('/bookings/${booking.id}/edit'),
@@ -976,6 +1171,80 @@ class _BookingDetailPageState extends ConsumerState<BookingDetailPage> {
                     OutlinedButton(
                       onPressed: () => context.go('/events/${booking.id}'),
                       child: const Text('Публічна подія'),
+                    ),
+                  if (admin || publisher)
+                    ActionButton(
+                      label: 'Видалити',
+                      outlined: true,
+                      action: () async {
+                        if (!await confirmAction(
+                          context,
+                          'Видалити подію?',
+                          'Подія зникне з календаря й заявок, а час стане вільним. Відновлення не передбачено. Технічна історія дій зберігається. Для відміни запланованої зустрічі використовуйте «Скасувати».',
+                        )) {
+                          return;
+                        }
+                        await ref
+                            .read(bookingServiceProvider)
+                            .execute(
+                              booking.id,
+                              BookingAction.delete,
+                              expectedVersion: booking.version,
+                            );
+                        if (context.mounted) {
+                          context.go(admin ? '/admin' : '/my-bookings');
+                        }
+                      },
+                    ),
+                  if ((admin || publisher) &&
+                      BookingService.seriesPrefix(booking.id) != null)
+                    ActionButton(
+                      label: 'Видалити всю серію',
+                      outlined: true,
+                      action: () async {
+                        final service = ref.read(bookingServiceProvider);
+                        final occurrences = await service.seriesOccurrences(
+                          booking.id,
+                        );
+                        if (!context.mounted) return;
+                        if (!await confirmAction(
+                          context,
+                          'Видалити всю серію?',
+                          'Буде видалено подій: ${occurrences.length}. Включно зі скасованими та минулими входженнями цієї серії. Відновлення не передбачено.',
+                        )) {
+                          return;
+                        }
+                        // Keep this page available if a later transaction fails; retry skips already deleted occurrences.
+                        final ordered = [
+                          ...occurrences.where((b) => b.id != booking.id),
+                          ...occurrences.where((b) => b.id == booking.id),
+                        ];
+                        var completed = 0;
+                        try {
+                          for (final occurrence in ordered) {
+                            await service.execute(
+                              occurrence.id,
+                              BookingAction.delete,
+                              expectedVersion: occurrence.version,
+                            );
+                            completed++;
+                          }
+                        } catch (error) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Видалено $completed із ${ordered.length}. ${errorMessage(error)} Натисніть «Видалити всю серію» ще раз для решти.',
+                                ),
+                              ),
+                            );
+                          }
+                          return;
+                        }
+                        if (context.mounted) {
+                          context.go(admin ? '/admin' : '/my-bookings');
+                        }
+                      },
                     ),
                   TextButton(onPressed: reload, child: const Text('Оновити')),
                 ],

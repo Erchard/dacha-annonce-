@@ -1,3 +1,4 @@
+import '../../bookings/domain/event_details.dart';
 import '../../../core/data/firestore_fields.dart';
 import '../../../core/errors/domain_exception.dart';
 import '../../../core/time/booking_time.dart';
@@ -10,6 +11,9 @@ class BookingDto {
     'title',
     'description',
     'responsibleName',
+    'contactPhone',
+    'notes',
+    'directions',
     'startAt',
     'endAt',
     'timeZone',
@@ -32,7 +36,12 @@ class BookingDto {
     'schemaVersion',
   };
   static Booking decode(String id, Map<String, dynamic> data) {
-    final f = Fields(data, keys);
+    final f = Fields({
+      'contactPhone': '',
+      'notes': '',
+      'directions': <String>[],
+      ...data,
+    }, keys);
     if (f.value<String>('timeZone') != 'Europe/Kyiv' ||
         f.value<int>('version') < 1) {
       throw const DomainException(ErrorCode.validation, field: 'booking');
@@ -55,6 +64,9 @@ class BookingDto {
         title: f.value('title'),
         description: f.value('description'),
         responsibleName: f.value('responsibleName'),
+        contactPhone: f.value('contactPhone'),
+        notes: f.value('notes'),
+        directions: checkedDirections(f.value<List<dynamic>>('directions')),
         interval: interval,
       ),
       status: f.enumeration('status', BookingStatus.values),

@@ -11,7 +11,19 @@ import '../../features/bookings/domain/booking.dart';
 import '../providers.dart';
 
 String errorMessage(Object error) {
-  if (error is DomainException) return error.message;
+  if (error is DomainException) {
+    return switch (error.field) {
+      'archiveBeforeDelete' => 'Спочатку архівуйте локацію.',
+      'roomHasBookings' => 'У локації залишились сьогоднішні або майбутні заявки чи події. Перенесіть, скасуйте чи видаліть їх. Події минулих днів не заважають видаленню локації.',
+      'startAt' => 'Початок має бути пізніше за поточний час (Київ) і не далі ніж за 180 днів. Для сьогодні оберіть час після зараз.',
+      'interval' =>
+        'Перевірте час: крок 30 хвилин, тривалість від 30 хвилин до 6 годин.',
+      'attachment' => 'Додайте JPEG, PNG або WebP до 700 КБ. Стисніть великий скріншот і спробуйте знову.',
+      'attachmentLimit' =>
+        'До одного звернення можна додати щонайбільше 5 зображень.',
+      _ => error.message,
+    };
+  }
   if (error is FirebaseAuthException) {
     return switch (error.code) {
       'invalid-email' => 'Перевірте електронну адресу.',
@@ -29,15 +41,29 @@ String errorMessage(Object error) {
   return 'Не вдалося завантажити або зберегти дані. Спробуйте ще раз.';
 }
 
+final _civilDate = DateFormat('dd.MM.yyyy');
+
 String localDate(DateTime instant) =>
-    DateFormat('dd.MM.yyyy').format(TimeZoneService().toKyiv(instant));
+    _civilDate.format(TimeZoneService().toKyiv(instant));
 String localTime(DateTime instant) =>
     DateFormat('HH:mm').format(TimeZoneService().toKyiv(instant));
+String formatCivilDate(DateTime day) =>
+    _civilDate.format(DateTime(day.year, day.month, day.day));
+DateTime? parseCivilDate(String text) {
+  try {
+    final parsed = _civilDate.parseStrict(text.trim());
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  } on FormatException {
+    return null;
+  }
+}
+
 String statusLabel(BookingStatus status) => switch (status) {
   BookingStatus.pending => 'Очікує рішення',
   BookingStatus.approved => 'Схвалено',
   BookingStatus.rejected => 'Відхилено',
   BookingStatus.cancelled => 'Скасовано',
+  BookingStatus.deleted => 'Видалено',
 };
 
 class AppFrame extends ConsumerWidget {
@@ -62,61 +88,76 @@ class AppFrame extends ConsumerWidget {
           ),
         ),
         actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Меню',
-            onSelected: (route) async {
-              if (route == 'logout') {
-                try {
-                  await ref.read(authRepositoryProvider).signOut();
-                  if (context.mounted) context.go('/');
-                } catch (error) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(errorMessage(error))),
-                    );
-                  }
-                }
-              } else {
-                context.go(route);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: '/', child: Text('Розклад')),
-              const PopupMenuItem(value: '/rooms', child: Text('Локації')),
-              if (profile == null ||
-                  (!profile.isDisabled && profile.role != UserRole.developer))
-                PopupMenuItem(
-                  value: profile?.role == UserRole.admin
-                      ? '/admin/events/new'
-                      : '/bookings/new',
-                  child: const Text('Забронювати'),
-                ),
+          Builder(
+            builder: (context) => IconButton(
+              tooltip: 'Особисте меню',
+              icon: const Icon(Icons.menu),
+              onPressed: () => Scaffold.of(context).openEndDrawer(),
+            ),
+          ),
+        ],
+      ),
+      endDrawer: Drawer(
+        child: SafeArea(
+          child: ListView(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('Особисте меню', style: TextStyle(fontSize: 22)),
+              ),
               if (profile != null &&
                   !profile.isDisabled &&
                   profile.role != UserRole.developer)
-                const PopupMenuItem(
-                  value: '/my-bookings',
-                  child: Text('Мої заявки'),
+                ListTile(
+                  title: const Text('Мої події та заявки'),
+                  onTap: () => context.go('/my-bookings'),
                 ),
-              if (profile?.role == UserRole.admin && !profile!.isDisabled)
-                const PopupMenuItem(value: '/admin', child: Text('Керування')),
+              if (profile?.role == UserRole.admin && !profile!.isDisabled) ...[
+                ListTile(
+                  title: const Text('Керувати подіями'),
+                  onTap: () => context.go('/admin'),
+                ),
+                ListTile(
+                  title: const Text('Редагувати локації'),
+                  onTap: () => context.go('/admin/rooms'),
+                ),
+                ListTile(
+                  title: const Text('Користувачі'),
+                  onTap: () => context.go('/admin/users'),
+                ),
+              ],
               if (profile != null &&
                   !profile.isDisabled &&
                   profile.role != UserRole.organizer)
-                const PopupMenuItem(
-                  value: '/support',
-                  child: Text('Написати розробнику'),
+                ListTile(
+                  title: const Text('Звернення'),
+                  onTap: () => context.go('/support'),
                 ),
-              PopupMenuItem(
-                value: session == null ? '/login' : '/account',
-                child: Text(session == null ? 'Увійти' : 'Обліковий запис'),
+              ListTile(
+                title: Text(session == null ? 'Увійти' : 'Обліковий запис'),
+                onTap: () =>
+                    context.go(session == null ? '/login' : '/account'),
               ),
               if (session != null)
-                const PopupMenuItem(value: 'logout', child: Text('Вийти')),
+                ListTile(
+                  title: const Text('Вийти'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    try {
+                      await ref.read(authRepositoryProvider).signOut();
+                      if (context.mounted) context.go('/');
+                    } catch (error) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(errorMessage(error))),
+                        );
+                      }
+                    }
+                  },
+                ),
             ],
           ),
-          const SizedBox(width: 12),
-        ],
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -129,6 +170,50 @@ class AppFrame extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        TextButton(
+                          onPressed: () => context.go('/calendar'),
+                          child: const Text('Календар'),
+                        ),
+                        TextButton(
+                          onPressed: () => context.go('/schedule'),
+                          child: const Text('Розклад подій'),
+                        ),
+                        TextButton(
+                          onPressed: () => context.go('/rooms'),
+                          child: const Text('Локації'),
+                        ),
+                        if (profile != null &&
+                            !profile.isDisabled &&
+                            profile.role != UserRole.developer)
+                          OutlinedButton.icon(
+                            onPressed: () => context.go(
+                              profile.role == UserRole.admin
+                                  ? '/admin'
+                                  : '/my-bookings',
+                            ),
+                            icon: const Icon(Icons.edit_calendar),
+                            label: Text(
+                              profile.role == UserRole.admin
+                                  ? 'Керувати подіями'
+                                  : 'Мої події',
+                            ),
+                          ),
+                        if (profile?.role != UserRole.developer)
+                          TextButton(
+                            onPressed: () => context.go(
+                              profile?.role == UserRole.admin
+                                  ? '/admin/events/new'
+                                  : '/bookings/new',
+                            ),
+                            child: const Text('Подати заявку'),
+                          ),
+                      ],
+                    ),
+                    const Divider(height: 24),
                     Semantics(
                       header: true,
                       child: Text(

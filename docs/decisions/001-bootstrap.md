@@ -7,7 +7,7 @@
 - Flutter Web, Material 3, українська локалізація, Riverpod та go_router. Версії обирає pub solver установленого stable SDK; результат фіксується в pubspec.lock.
 - USE_FIREBASE_EMULATORS має бути явно true для локального запуску. Лише demo-dacha, loopback host, стандартні порти. Без config запуск показує помилку до ініціалізації Firebase. Автоматичного fallback немає.
 - Production options передаються як публічні compile-time defines; це не secret storage. Реальні ID/region поки не визначені. Приклад конфігурації має порожні значення й не є готовим production config.
-- Auth використовує session persistence, Firestore persistent disk cache вимкнений.
+- Auth у production використовує LOCAL persistence (токен між відкриттями вкладки); емулятор лишається на SESSION через обмеження FlutterFire. Firestore persistent disk cache вимкнений.
 - Firestore Rules deny-all; майбутні колекції відкриваються лише разом із негативними тестами відповідного Stage.
 - Hosting має SPA rewrite для path URL та no-cache baseline. Оптимізація caching належить Stage 11.
 - Початковий docs/SPEC.md збережено, точну копію додано в корінь як SPEC.md відповідно до його інструкції. Подальше джерело вимог — кореневий SPEC.md.

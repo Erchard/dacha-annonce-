@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,7 +25,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final email = TextEditingController(),
       password = TextEditingController(),
       name = TextEditingController();
-  bool register = false, busy = false;
+  bool register = false, busy = false, rememberMe = true;
   String? error;
   @override
   void initState() {
@@ -58,11 +59,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
     try {
       final auth = ref.read(authRepositoryProvider);
+      await auth.setRememberSignedIn(rememberMe);
       if (register) {
         await auth.register(email.text, password.text, name.text);
       } else {
         await auth.signIn(email.text, password.text);
       }
+      TextInput.finishAutofillContext(shouldSave: rememberMe);
       if (mounted) context.go(register ? '/account' : destination);
     } catch (e) {
       if (mounted) setState(() => error = errorMessage(e));
@@ -82,113 +85,148 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       alignment: Alignment.topLeft,
       child: SizedBox(
         width: 460,
-        child: Form(
-          key: form,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (register)
+        child: AutofillGroup(
+          child: Form(
+            key: form,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextButton.icon(
+                  onPressed: () => context.go('/'),
+                  icon: const Icon(Icons.home_outlined),
+                  label: const Text('Перейти на сайт'),
+                ),
+                const SizedBox(height: 16),
+                if (register)
+                  TextFormField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: 'Ваше ім’я'),
+                    maxLength: 80,
+                    autofillHints: const [AutofillHints.name],
+                    textInputAction: TextInputAction.next,
+                    validator: (v) => v == null || v.trim().length < 2
+                        ? 'Укажіть ім’я (від 2 символів).'
+                        : null,
+                  ),
                 TextFormField(
-                  controller: name,
-                  decoration: const InputDecoration(labelText: 'Ваше ім’я'),
-                  maxLength: 80,
-                  autofillHints: const [AutofillHints.name],
-                  validator: (v) => v == null || v.trim().length < 2
-                      ? 'Укажіть ім’я (від 2 символів).'
+                  controller: email,
+                  decoration: const InputDecoration(
+                    labelText: 'Електронна адреса',
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: [
+                    if (register)
+                      AutofillHints.email
+                    else
+                      AutofillHints.username,
+                    AutofillHints.email,
+                  ],
+                  textInputAction: TextInputAction.next,
+                  validator: (v) => v == null || !v.contains('@')
+                      ? 'Укажіть електронну адресу.'
                       : null,
                 ),
-              TextFormField(
-                controller: email,
-                decoration: const InputDecoration(
-                  labelText: 'Електронна адреса',
-                ),
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const [AutofillHints.email],
-                validator: (v) => v == null || !v.contains('@')
-                    ? 'Укажіть електронну адресу.'
-                    : null,
-              ),
-              const SizedBox(height: 16),
-              if (!widget.resetOnly)
-                TextFormField(
-                  controller: password,
-                  decoration: const InputDecoration(labelText: 'Пароль'),
-                  obscureText: true,
-                  autofillHints: const [AutofillHints.password],
-                  onFieldSubmitted: (_) {
-                    if (!busy) submit();
-                  },
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Укажіть пароль.'
-                      : register &&
-                            (v.length < 8 ||
-                                !RegExp(r'[0-9]').hasMatch(v) ||
-                                !RegExp(r'[A-Za-zА-Яа-яІіЇїЄє]').hasMatch(v))
-                      ? 'Щонайменше 8 символів, літери й цифри.'
-                      : null,
-                ),
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                const SizedBox(height: 16),
+                if (!widget.resetOnly)
+                  TextFormField(
+                    controller: password,
+                    decoration: const InputDecoration(labelText: 'Пароль'),
+                    obscureText: true,
+                    autofillHints: [
+                      if (register)
+                        AutofillHints.newPassword
+                      else
+                        AutofillHints.password,
+                    ],
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) {
+                      if (!busy) submit();
+                    },
+                    validator: (v) => v == null || v.isEmpty
+                        ? 'Укажіть пароль.'
+                        : register &&
+                              (v.length < 8 ||
+                                  !RegExp(r'[0-9]').hasMatch(v) ||
+                                  !RegExp(r'[A-Za-zА-Яа-яІіЇїЄє]').hasMatch(v))
+                        ? 'Щонайменше 8 символів, літери й цифри.'
+                        : null,
+                  ),
+                if (!widget.resetOnly)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: rememberMe,
+                    onChanged: busy
+                        ? null
+                        : (value) => setState(() => rememberMe = value ?? true),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Запам’ятати мене на цьому комп’ютері'),
+                    subtitle: const Text(
+                      'Наступного разу вхід без екрана логіну. Браузер також може зберегти пароль.',
                     ),
                   ),
-                ),
-              const SizedBox(height: 24),
-              if (!widget.resetOnly)
-                FilledButton(
-                  onPressed: busy ? null : submit,
-                  child: Text(
-                    busy
-                        ? 'Зачекайте…'
-                        : register
-                        ? 'Зареєструватися'
-                        : 'Увійти',
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
                   ),
-                ),
-              if (!widget.resetOnly)
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () => setState(() {
-                          register = !register;
-                          error = null;
-                        }),
-                  child: Text(
-                    register
-                        ? 'Уже є обліковий запис? Увійти'
-                        : 'Створити обліковий запис',
+                const SizedBox(height: 24),
+                if (!widget.resetOnly)
+                  FilledButton(
+                    onPressed: busy ? null : submit,
+                    child: Text(
+                      busy
+                          ? 'Зачекайте…'
+                          : register
+                          ? 'Зареєструватися'
+                          : 'Увійти',
+                    ),
                   ),
-                ),
-              if (!register)
-                ActionButton(
-                  label: 'Відновити пароль',
-                  outlined: true,
-                  action: () async {
-                    if (!email.text.contains('@')) {
-                      throw const DomainException(
-                        ErrorCode.validation,
-                        field: 'email',
-                      );
-                    }
-                    await ref
-                        .read(authRepositoryProvider)
-                        .resetPassword(email.text);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Якщо адреса зареєстрована, ви отримаєте лист для відновлення пароля.',
+                if (!widget.resetOnly)
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () => setState(() {
+                            register = !register;
+                            error = null;
+                          }),
+                    child: Text(
+                      register
+                          ? 'Уже є обліковий запис? Увійти'
+                          : 'Створити обліковий запис',
+                    ),
+                  ),
+                if (!register)
+                  ActionButton(
+                    label: 'Відновити пароль',
+                    outlined: true,
+                    action: () async {
+                      if (!email.text.contains('@')) {
+                        throw const DomainException(
+                          ErrorCode.validation,
+                          field: 'email',
+                        );
+                      }
+                      await ref
+                          .read(authRepositoryProvider)
+                          .resetPassword(email.text);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Якщо адреса зареєстрована, ви отримаєте лист для відновлення пароля.',
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                  },
-                ),
-            ],
+                        );
+                      }
+                    },
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -243,6 +281,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (user != null) Text('Вітаємо, ${user.displayName}!'),
+          if (user != null)
+            SelectableText('Код акаунта для адміністратора: ${user.id}'),
           if (user?.isDisabled == true)
             const Text(
               'Обліковий запис заблоковано. Зверніться до адміністрації.',

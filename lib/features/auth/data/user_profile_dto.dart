@@ -8,6 +8,7 @@ class UserProfileDto {
     'displayName',
     'role',
     'isDisabled',
+    'canPublish',
     'createdAt',
     'updatedAt',
     'createdBy',
@@ -17,12 +18,13 @@ class UserProfileDto {
     'lastAdminAuditId',
   };
   static UserProfile decode(String id, Map<String, dynamic> data) {
-    final f = Fields(data, keys);
+    final f = Fields({'canPublish': false, ...data}, keys);
     return UserProfile(
       id: id,
       displayName: f.value('displayName'),
       role: f.enumeration('role', UserRole.values),
       isDisabled: f.value('isDisabled'),
+      canPublish: f.value('canPublish'),
       createdAt: f.time('createdAt'),
       updatedAt: f.time('updatedAt'),
       createdBy: f.value('createdBy'),
@@ -36,6 +38,7 @@ class UserProfileDto {
     'displayName': user.displayName,
     'role': user.role.name,
     'isDisabled': user.isDisabled,
+    'canPublish': user.canPublish,
     'createdAt': Timestamp.fromDate(user.createdAt),
     'updatedAt': Timestamp.fromDate(user.updatedAt),
     'createdBy': user.createdBy,

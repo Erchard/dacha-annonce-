@@ -116,7 +116,7 @@ Feature directories створювати за потреби, без десят�
 
 ### 3.3 Контракти
 
-- `AuthRepository`: session stream, register, signIn, signOut, sendVerification, resetPassword, reloadUser.
+- `AuthRepository`: session stream, register, signIn, setRememberSignedIn, signOut, sendVerification, resetPassword, reloadUser.
 - `UserRepository`: watchMyProfile, updateMyDisplayName, admin listProfiles/setDisabled.
 - `RoomRepository`: watchActiveRooms, getRoom, admin upsert/archive.
 - `PublicEventRepository`: listRange, getPublishedEvent; лише публічна проєкція.
@@ -266,8 +266,8 @@ Append-only приватний audit змін room/user: `entityType:string(room
 | rooms | active, orderBy sortOrder | isActive ASC, sortOrder ASC |
 | publicEvents | startAt у bounded range, orderBy startAt | single-field startAt |
 | publicEvents | roomId + той самий range | roomId ASC, startAt ASC |
-| bookings | owner, orderBy createdAt DESC | organizerId ASC, createdAt DESC |
-| bookings | owner + status, createdAt DESC | organizerId ASC, status ASC, createdAt DESC |
+| bookings | owner, orderBy startAt ASC від сьогодні | organizerId ASC, startAt ASC |
+| bookings | owner + status, startAt ASC від сьогодні | organizerId ASC, status ASC, startAt ASC |
 | bookings | admin status, createdAt ASC | status ASC, createdAt ASC |
 | bookings | admin room + startAt range | roomId ASC, startAt ASC |
 | bookings | admin status + startAt range | status ASC, startAt ASC |
@@ -820,3 +820,10 @@ README повинен дозволити іншому розробнику за�
 Приклад наступного запиту до IDE Codex:
 
 > Прочитай AGENTS.md, SPEC.md і поточний код у D:\Projects\dacha-annonce-. Виконай лише Stage 1 — Bootstrap + Firebase. Збережи існуючі файли та незакомічені зміни, не роби commit/push/deploy і не підключай платні сервіси. Перевір результат, дай звіт за протоколом SPEC.md та зупинися.
+
+
+## Уточнення за зверненнями MI від 12.10.2026
+
+MI залишається єдиним головним адміністратором. Вона може надати окремим організаторам дозвіл canPublish: самостійна публікація та керування лише власними подіями, включно з перенесенням і видаленням. Самореєстрація дозволу не надає. Для решти організаторів попереднє схвалення MI зберігається.
+
+Видалення помилкової події — термінальний стан deleted: її немає в інтерфейсі, час звільнений, технічна історія збережена. Доступне видалення всієї скінченної щотижневої серії з явним результатом часткового виконання. Скасування одного повторення не змінюється. Архівну локацію можна видалити окремою дією після обробки її відкритих заявок і подій. Деталі й інструкція: docs/mi-organizers-guide.md, docs/data-model.md.

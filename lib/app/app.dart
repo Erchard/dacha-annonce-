@@ -172,8 +172,21 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
     ),
     GoRoute(
       path: '/calendar',
-      redirect: (context, state) =>
-          Uri(path: '/', queryParameters: state.uri.queryParameters).toString(),
+      builder: (context, state) => CalendarPage(
+        pagePath: '/calendar',
+        date: state.uri.queryParameters['date'],
+        roomId: state.uri.queryParameters['room'],
+        view: state.uri.queryParameters['view'],
+      ),
+    ),
+    GoRoute(
+      path: '/schedule',
+      builder: (context, state) => CalendarPage(
+        pagePath: '/schedule',
+        view: state.uri.queryParameters['view'],
+        date: state.uri.queryParameters['date'],
+        roomId: state.uri.queryParameters['room'],
+      ),
     ),
     GoRoute(path: '/rooms', builder: (context, state) => const RoomsPage()),
     GoRoute(

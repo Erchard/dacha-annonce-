@@ -1,3 +1,6 @@
+import '../../features/bookings/domain/event_details.dart';
+import 'schedule_table.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,8 +16,15 @@ import '../providers.dart';
 import 'shared.dart';
 
 class CalendarPage extends ConsumerStatefulWidget {
-  const CalendarPage({super.key, this.date, this.roomId, this.view});
+  const CalendarPage({
+    super.key,
+    this.date,
+    this.roomId,
+    this.view,
+    this.pagePath = '/',
+  });
   final String? date, roomId, view;
+  final String pagePath;
   @override
   ConsumerState<CalendarPage> createState() => _CalendarPageState();
 }
@@ -29,6 +39,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
   bool busy = true;
   int generation = 0;
   Object? error;
+  final Set<String> selectedDirections = {};
   String? invalidDate;
 
   DateTime civil(DateTime value) =>
@@ -44,7 +55,13 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         ? 'Некоректна дата в посиланні.'
         : null;
     focus = parsed == null ? now : civil(parsed);
-    view = views.contains(widget.view) ? widget.view! : 'month';
+    view = widget.pagePath == '/schedule'
+        ? (const {'day', 'week', 'month'}.contains(widget.view)
+              ? widget.view!
+              : 'week')
+        : views.contains(widget.view)
+        ? widget.view!
+        : 'month';
   }
 
   ({DateTime start, DateTime end}) window() {
@@ -86,7 +103,8 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     super.didUpdateWidget(old);
     if (old.date != widget.date ||
         old.roomId != widget.roomId ||
-        old.view != widget.view) {
+        old.view != widget.view ||
+        old.pagePath != widget.pagePath) {
       readQuery();
       load(reset: true);
     }
@@ -117,6 +135,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         range.end,
         PageRequest(after: reset ? null : next),
         roomId: widget.roomId,
+        directions: selectedDirections.toList()..sort(),
       );
       final roomPage = rooms.isEmpty
           ? await repo.listRooms(PageRequest(limit: 100))
@@ -154,7 +173,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
       'view': nextView ?? view,
       'room': ?selectedRoom,
     };
-    context.go(Uri(path: '/', queryParameters: params).toString());
+    context.go(Uri(path: widget.pagePath, queryParameters: params).toString());
   }
 
   String periodLabel() {
@@ -195,7 +214,11 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
       _ => 0,
     };
     return AppFrame(
-      title: 'Розклад',
+      title: widget.pagePath == '/calendar'
+          ? 'Календар'
+          : widget.pagePath == '/schedule'
+          ? 'Розклад подій'
+          : 'Розклад',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -217,15 +240,18 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 ('month', 'Місяць'),
                 ('list', 'Список'),
               ])
-                item.$1 == view
-                    ? FilledButton(
-                        onPressed: () => navigate(focus, nextView: item.$1),
-                        child: Text(item.$2),
-                      )
-                    : OutlinedButton(
-                        onPressed: () => navigate(focus, nextView: item.$1),
-                        child: Text(item.$2),
-                      ),
+                if (item.$1 != 'list' ||
+                    (widget.pagePath != '/calendar' &&
+                        widget.pagePath != '/schedule'))
+                  item.$1 == view
+                      ? FilledButton(
+                          onPressed: () => navigate(focus, nextView: item.$1),
+                          child: Text(item.$2),
+                        )
+                      : OutlinedButton(
+                          onPressed: () => navigate(focus, nextView: item.$1),
+                          child: Text(item.$2),
+                        ),
             ],
           ),
           const SizedBox(height: 12),
@@ -238,7 +264,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 tooltip: 'Попередній період',
                 onPressed: () => navigate(
                   step == 0
-                      ? DateTime(focus.year, focus.month - 1, focus.day)
+                      ? DateTime(focus.year, focus.month - 1, 1)
                       : DateTime(focus.year, focus.month, focus.day - step),
                 ),
                 icon: const Icon(Icons.chevron_left),
@@ -251,7 +277,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 tooltip: 'Наступний період',
                 onPressed: () => navigate(
                   step == 0
-                      ? DateTime(focus.year, focus.month + 1, focus.day)
+                      ? DateTime(focus.year, focus.month + 1, 1)
                       : DateTime(focus.year, focus.month, focus.day + step),
                 ),
                 icon: const Icon(Icons.chevron_right),
@@ -269,7 +295,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                     firstDate: DateTime(2020),
                     lastDate: DateTime(2100),
                   );
-                  if (date != null && mounted) navigate(date);
+                  if (date != null && mounted) navigate(date, nextView: 'day');
                 },
                 child: const Text('Вибрати дату'),
               ),
@@ -321,6 +347,56 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 }
               },
             ),
+          const SizedBox(height: 12),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: Text(
+              selectedDirections.isEmpty
+                  ? 'Напрямки: усі'
+                  : 'Напрямків вибрано: ${selectedDirections.length}',
+            ),
+            children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Показати події хоча б одного з вибраних напрямків.',
+                ),
+              ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final direction in eventDirections)
+                    FilterChip(
+                      label: Text(direction),
+                      selected: selectedDirections.contains(direction),
+                      onSelected: busy
+                          ? null
+                          : (selected) {
+                              setState(() {
+                                if (selected) {
+                                  selectedDirections.add(direction);
+                                } else {
+                                  selectedDirections.remove(direction);
+                                }
+                              });
+                              load(reset: true);
+                            },
+                    ),
+                ],
+              ),
+              if (selectedDirections.isNotEmpty)
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () {
+                          setState(selectedDirections.clear);
+                          load(reset: true);
+                        },
+                  child: const Text('Показати всі напрямки'),
+                ),
+            ],
+          ),
           const SizedBox(height: 20),
           if (invalidDate != null)
             Text(invalidDate!)
@@ -344,6 +420,9 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 final wide =
                     constraints.maxWidth >= 760 &&
                     MediaQuery.textScalerOf(context).scale(1) <= 1.4;
+                if (widget.pagePath == '/schedule') {
+                  return ScheduleTable(events: events, wide: wide);
+                }
                 return Column(
                   children: [
                     if (wide && view == 'month')
@@ -353,22 +432,25 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                       ),
                     if (wide && view == 'week')
                       _WeekGrid(focus: focus, events: events),
-                    for (final event in events)
-                      Card(
-                        child: ListTile(
-                          isThreeLine: true,
-                          title: Text(
-                            '${localDate(event.interval.start)} · ${localTime(event.interval.start)}–${localTime(event.interval.end)} · ${event.title}',
-                          ),
-                          subtitle: Text(
-                            '${event.roomNameSnapshot}${event.responsibleName.isEmpty ? '' : ' · ${event.responsibleName}'}',
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => context.go(
-                            '/events/${Uri.encodeComponent(event.id)}',
+                    if (widget.pagePath != '/calendar' ||
+                        !wide ||
+                        view == 'day')
+                      for (final event in events)
+                        Card(
+                          child: ListTile(
+                            isThreeLine: true,
+                            title: Text(
+                              '${localDate(event.interval.start)} · ${localTime(event.interval.start)}–${localTime(event.interval.end)} · ${event.title}',
+                            ),
+                            subtitle: Text(
+                              '${event.roomNameSnapshot}${event.responsibleName.isEmpty ? '' : ' · ${event.responsibleName}'}',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => context.go(
+                              '/events/${Uri.encodeComponent(event.id)}',
+                            ),
                           ),
                         ),
-                      ),
                   ],
                 );
               },
@@ -456,9 +538,21 @@ class _MonthGrid extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '$day',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    InkWell(
+                      onTap: () => context.go(
+                        Uri(
+                          path: '/calendar',
+                          queryParameters: {
+                            ...GoRouterState.of(context).uri.queryParameters,
+                            'date': DateFormat('yyyy-MM-dd')
+                                .format(DateTime(month.year, month.month, day)),
+                            'view': 'day',
+                          },
+                        ).toString(),
+                      ),
+                      child: _CalendarDayLabel(
+                        DateTime(month.year, month.month, day),
+                      ),
                     ),
                     for (final event in todayEvents.take(2))
                       InkWell(
@@ -471,14 +565,29 @@ class _MonthGrid extends StatelessWidget {
                             '${localTime(event.interval.start)} ${event.title}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelSmall,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color:
+                                      _isPastCalendarDay(
+                                        DateTime(month.year, month.month, day),
+                                      )
+                                      ? Theme.of(context).colorScheme.outline
+                                      : null,
+                                ),
                           ),
                         ),
                       ),
                     if (todayEvents.length > 2)
                       Text(
-                        '+${todayEvents.length - 2} у списку нижче',
-                        style: Theme.of(context).textTheme.labelSmall,
+                        '+${todayEvents.length - 2} — оберіть день',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color:
+                              _isPastCalendarDay(
+                                DateTime(month.year, month.month, day),
+                              )
+                              ? Theme.of(context).colorScheme.outline
+                              : null,
+                        ),
                       ),
                   ],
                 ),
@@ -486,6 +595,47 @@ class _MonthGrid extends StatelessWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+bool _isPastCalendarDay(DateTime day) {
+  final now = tz.TZDateTime.now(tz.getLocation('Europe/Kyiv'));
+  return DateTime(
+    day.year,
+    day.month,
+    day.day,
+  ).isBefore(DateTime(now.year, now.month, now.day));
+}
+
+class _CalendarDayLabel extends StatelessWidget {
+  const _CalendarDayLabel(this.day);
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = tz.TZDateTime.now(tz.getLocation('Europe/Kyiv'));
+    final today =
+        day.year == now.year && day.month == now.month && day.day == now.day;
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: today
+          ? BoxDecoration(color: colors.primary, shape: BoxShape.circle)
+          : null,
+      child: Text(
+        '${day.day}',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: today
+              ? colors.onPrimary
+              : _isPastCalendarDay(day)
+              ? colors.outline
+              : colors.onSurface,
+        ),
       ),
     );
   }
@@ -546,9 +696,18 @@ class _WeekGrid extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            DateFormat('E d', 'uk').format(day),
-            style: const TextStyle(fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Text(
+                DateFormat('E', 'uk').format(day),
+                style: TextStyle(
+                  color: _isPastCalendarDay(day)
+                      ? Theme.of(context).colorScheme.outline
+                      : null,
+                ),
+              ),
+              _CalendarDayLabel(day),
+            ],
           ),
           for (final event in todayEvents)
             InkWell(
@@ -560,7 +719,11 @@ class _WeekGrid extends StatelessWidget {
                   '${localTime(event.interval.start)} ${event.title}',
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: _isPastCalendarDay(day)
+                        ? Theme.of(context).colorScheme.outline
+                        : null,
+                  ),
                 ),
               ),
             ),
@@ -621,7 +784,18 @@ class _EventPageState extends ConsumerState<EventPage> {
               Text('Відповідальний: ${data.responsibleName}'),
             const SizedBox(height: 24),
             SelectableText(data.description),
+            if (data.contactPhone.isNotEmpty)
+              SelectableText('Телефон: ${data.contactPhone}'),
+            if (data.notes.isNotEmpty) Text('Примітки: ${data.notes}'),
+            if (data.directions.isNotEmpty) Text(data.directions.join(' · ')),
             const SizedBox(height: 24),
+            if (ref.watch(profileProvider).asData?.value?.role ==
+                UserRole.admin)
+              FilledButton.icon(
+                onPressed: () => context.go('/bookings/${data.id}'),
+                icon: const Icon(Icons.edit_calendar),
+                label: const Text('Керувати подією / Видалити'),
+              ),
             TextButton(
               onPressed: () => context.go('/'),
               child: const Text('До розкладу'),
@@ -643,6 +817,7 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
   List<Room> rooms = [];
   PageCursor? next;
   Object? error;
+  final Set<String> selectedDirections = {};
   bool busy = true;
   @override
   void initState() {
@@ -698,6 +873,15 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
                     Text('Місткість: ${room.capacity}'),
                   const SizedBox(height: 8),
                   Text(room.description),
+                  TextButton(
+                    onPressed: () => context.go(
+                      Uri(
+                        path: '/schedule',
+                        queryParameters: {'room': room.id},
+                      ).toString(),
+                    ),
+                    child: const Text('Розклад локації'),
+                  ),
                   TextButton(
                     onPressed: () => context.go(
                       Uri(

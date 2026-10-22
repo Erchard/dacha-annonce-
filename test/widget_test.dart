@@ -21,6 +21,7 @@ class EmptyRepository implements AppRepository {
     DateTime end,
     paging.PageRequest page, {
     String? roomId,
+    List<String> directions = const [],
   }) async => paging.Page([], null);
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -34,6 +35,7 @@ class PopulatedRepository extends EmptyRepository {
     DateTime end,
     paging.PageRequest page, {
     String? roomId,
+    List<String> directions = const [],
   }) async {
     final date = DateTime.utc(
       DateTime.now().year,

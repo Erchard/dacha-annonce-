@@ -13,6 +13,7 @@ import '../../features/rooms/domain/room_repository.dart';
 import '../../features/calendar/data/public_event_dto.dart';
 import '../../features/calendar/domain/public_event.dart';
 import '../../features/calendar/domain/public_event_repository.dart';
+import '../../core/time/time_zone_service.dart';
 import '../../features/bookings/data/booking_dto.dart';
 import '../../features/bookings/domain/booking.dart';
 
@@ -117,15 +118,19 @@ class AppRepository
     DateTime end,
     PageRequest page, {
     String? roomId,
+    List<String> directions = const [],
   }) => firestoreCall(() async {
     if (!start.isBefore(end) ||
         end.difference(start) > const Duration(days: 62)) {
       throw const DomainException(ErrorCode.validation, field: 'range');
     }
     final from = start.toUtc(), to = end.toUtc();
-    final key = 'events:$from:$to:$roomId';
+    final key = 'events:$from:$to:$roomId:${directions.join('|')}';
     Query<Map<String, dynamic>> query = db.collection('publicEvents');
     if (roomId != null) query = query.where('roomId', isEqualTo: roomId);
+    if (directions.isNotEmpty) {
+      query = query.where('directions', arrayContainsAny: directions);
+    }
     final result = await _cursor(
       query
           .where(
@@ -191,7 +196,9 @@ class AppRepository
   });
   Future<Booking?> getBooking(String id) => firestoreCall(() async {
     final s = await db.collection('bookings').doc(id).get();
-    return s.data() == null ? null : BookingDto.decode(id, s.data()!);
+    return s.data() == null || s.data()!['status'] == 'deleted'
+        ? null
+        : BookingDto.decode(id, s.data()!);
   });
   Future<Page<Booking>> listBookings(
     PageRequest page, {
@@ -199,18 +206,103 @@ class AppRepository
     BookingStatus? status,
   }) => firestoreCall(() async {
     final owner = forAdmin ? null : uid;
-    final key = 'bookings:$owner:${status?.name}';
+    final upcoming = !forAdmin;
+    final key =
+        'bookings:$owner:${status?.name}:${upcoming ? 'startAt' : 'createdAt'}';
     Query<Map<String, dynamic>> query = db.collection('bookings');
     if (owner != null) query = query.where('organizerId', isEqualTo: owner);
     if (status != null) query = query.where('status', isEqualTo: status.name);
+    if (upcoming) {
+      final kyiv = TimeZoneService().toKyiv(DateTime.now());
+      final from = TimeZoneService().candidates(
+        year: kyiv.year,
+        month: kyiv.month,
+        day: kyiv.day,
+        hour: 0,
+        minute: 0,
+      );
+      query = query.where(
+        'startAt',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(
+          from.isEmpty
+              ? DateTime.utc(kyiv.year, kyiv.month, kyiv.day)
+              : from.first,
+        ),
+      );
+    }
+    final order = upcoming ? 'startAt' : 'createdAt';
     final result = await _cursor(
       query
-          .orderBy('createdAt', descending: !forAdmin)
-          .orderBy(FieldPath.documentId, descending: !forAdmin),
+          .orderBy(order, descending: !upcoming && !forAdmin)
+          .orderBy(FieldPath.documentId, descending: !upcoming && !forAdmin),
       page,
       key,
     ).get();
-    return _page(result, page, key, 'createdAt', BookingDto.decode);
+    final loaded = _page(result, page, key, order, BookingDto.decode);
+    return Page(
+      loaded.items.where((b) => b.status != BookingStatus.deleted),
+      loaded.next,
+    );
+  });
+
+  Future<void> deleteRoom(Room room) => firestoreCall(() async {
+    if (room.isActive) {
+      throw const DomainException(
+        ErrorCode.validation,
+        field: 'archiveBeforeDelete',
+      );
+    }
+    final now = DateTime.now();
+    QueryDocumentSnapshot<Map<String, dynamic>>? cursor;
+    while (true) {
+      Query<Map<String, dynamic>> query = db
+          .collection('bookings')
+          .where('roomId', isEqualTo: room.id)
+          .orderBy(FieldPath.documentId)
+          .limit(100);
+      if (cursor != null) query = query.startAfterDocument(cursor);
+      final page = await query.get();
+      if (page.docs.any((d) {
+        final data = d.data();
+        if (!['pending', 'approved'].contains(data['status'])) return false;
+        return bookingPreventsRoomDeletion(
+          BookingStatus.values.byName(data['status'] as String),
+          (data['startAt'] as Timestamp).toDate(),
+          now,
+        );
+      })) {
+        throw const DomainException(
+          ErrorCode.validation,
+          field: 'roomHasBookings',
+        );
+      }
+      if (page.docs.length < 100) break;
+      cursor = page.docs.last;
+    }
+    await firestoreTransaction(db, (tx) async {
+      final roomRef = db.collection('rooms').doc(room.id);
+      final old = (await tx.get(roomRef)).data();
+      if (old == null) throw const DomainException(ErrorCode.notFound);
+      if (old['revision'] != room.revision || old['isActive'] != false) {
+        throw const DomainException(ErrorCode.staleVersion);
+      }
+      final before = _roomView(old);
+      tx.delete(roomRef);
+      tx.set(
+        db.collection('adminAudit').doc('delete-${room.id}-${room.revision}'),
+        {
+          'entityType': 'room',
+          'entityId': room.id,
+          'action': 'delete',
+          'actorId': uid,
+          'at': FieldValue.serverTimestamp(),
+          'revision': room.revision + 1,
+          'before': before,
+          'after': <String, dynamic>{},
+          'changedFields': before.keys.toList(),
+        },
+      );
+    });
   });
 
   Map<String, dynamic> _roomView(Map<String, dynamic> d) => {
@@ -332,6 +424,47 @@ class AppRepository
       });
     });
   });
+  Future<void> setPublishing(
+    String id,
+    bool allowed, {
+    required int expectedRevision,
+  }) => firestoreCall(() async {
+    final actor = uid;
+    final ref = db.collection('users').doc(id);
+    final audit = db.collection('adminAudit').doc();
+    await firestoreTransaction(db, (tx) async {
+      final before = (await tx.get(ref)).data();
+      if (before == null) throw const DomainException(ErrorCode.notFound);
+      if (before['adminRevision'] != expectedRevision) {
+        throw const DomainException(ErrorCode.staleVersion);
+      }
+      if (before['role'] != 'organizer') {
+        throw const DomainException(ErrorCode.permissionDenied);
+      }
+      if ((before['canPublish'] ?? false) == allowed) {
+        throw const DomainException(ErrorCode.validation, field: 'canPublish');
+      }
+      final now = FieldValue.serverTimestamp();
+      tx.update(ref, {
+        'canPublish': allowed,
+        'adminRevision': expectedRevision + 1,
+        'lastAdminAuditId': audit.id,
+        'updatedAt': now,
+        'updatedBy': actor,
+      });
+      tx.set(audit, {
+        'entityType': 'user',
+        'entityId': id,
+        'action': 'set_publishing',
+        'actorId': actor,
+        'at': now,
+        'revision': expectedRevision + 1,
+        'before': {'canPublish': before['canPublish'] ?? false},
+        'after': {'canPublish': allowed},
+        'changedFields': ['canPublish'],
+      });
+    });
+  });
 }
 
 class FirebaseAuthRepository implements AuthRepository {
@@ -392,6 +525,10 @@ class FirebaseAuthRepository implements AuthRepository {
       password: password,
     );
   }
+
+  @override
+  Future<void> setRememberSignedIn(bool remember) =>
+      auth.setPersistence(remember ? Persistence.LOCAL : Persistence.SESSION);
 
   @override
   Future<void> signOut() => auth.signOut();

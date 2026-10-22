@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -15,6 +17,9 @@ const ticketStatuses = [
 ];
 const ticketPriorities = ['low', 'normal', 'high'];
 const ticketTypes = ['bug', 'feature', 'feedback'];
+const attachmentContentTypes = {'image/jpeg', 'image/png', 'image/webp'};
+const maxAttachmentBytes = 700000;
+const maxAttachmentsPerTicket = 5;
 
 List<String> allowedTicketStatuses(String role, String status) =>
     role == 'developer'
@@ -120,10 +125,10 @@ class SupportRepository {
     String collection,
     PageRequest page,
   ) => firestoreCall(() async {
-    if (!['comments', 'history'].contains(collection)) {
+    if (!['comments', 'history', 'attachments'].contains(collection)) {
       throw const DomainException(ErrorCode.validation);
     }
-    final order = collection == 'comments' ? 'createdAt' : 'version',
+    final order = collection == 'history' ? 'version' : 'createdAt',
         key = 'support:$id:$collection';
     Query<Map<String, dynamic>> q = db
         .collection('supportTickets')
@@ -177,6 +182,53 @@ class SupportRepository {
   );
   Future<void> priority(Ticket t, String priority) =>
       _write(t.id, t.version, 'priority_changed', priority: priority);
+
+  Future<void> addAttachment(
+    String ticketId, {
+    required String fileName,
+    required String contentType,
+    required Uint8List bytes,
+  }) => firestoreCall(() async {
+    final uid = auth.currentUser?.uid;
+    if (uid == null) throw const DomainException(ErrorCode.unauthenticated);
+    final name = checkedText(fileName.trim(), 'fileName', 1, 160);
+    if (!attachmentContentTypes.contains(contentType) ||
+        bytes.isEmpty ||
+        bytes.length > maxAttachmentBytes) {
+      throw const DomainException(ErrorCode.validation, field: 'attachment');
+    }
+    final ticket = db.collection('supportTickets').doc(ticketId);
+    final profile = (await db.collection('users').doc(uid).get()).data();
+    if (profile == null ||
+        profile['isDisabled'] == true ||
+        !['admin', 'developer'].contains(profile['role'])) {
+      throw const DomainException(ErrorCode.permissionDenied);
+    }
+    final existing = await ticket
+        .collection('attachments')
+        .limit(maxAttachmentsPerTicket)
+        .get();
+    if (existing.size >= maxAttachmentsPerTicket) {
+      throw const DomainException(
+        ErrorCode.validation,
+        field: 'attachmentLimit',
+      );
+    }
+    if (!(await ticket.get()).exists) {
+      throw const DomainException(ErrorCode.notFound);
+    }
+    await ticket.collection('attachments').doc().set({
+      'fileName': name,
+      'contentType': contentType,
+      'bytes': Blob(bytes),
+      'size': bytes.length,
+      'authorId': uid,
+      'authorRole': profile['role'],
+      'createdAt': FieldValue.serverTimestamp(),
+      'schemaVersion': 1,
+    });
+  });
+
   Future<void> _write(
     String id,
     int version,

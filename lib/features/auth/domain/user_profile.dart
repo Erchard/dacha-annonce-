@@ -8,6 +8,7 @@ class UserProfile {
     required this.displayName,
     required this.role,
     required this.isDisabled,
+    this.canPublish = false,
     required this.createdAt,
     required this.updatedAt,
     required this.createdBy,
@@ -24,6 +25,7 @@ class UserProfile {
   final String id, displayName, createdBy, updatedBy;
   final UserRole role;
   final bool isDisabled;
+  final bool canPublish;
   final DateTime createdAt, updatedAt;
   final int adminRevision;
   final String? lastAdminAuditId;

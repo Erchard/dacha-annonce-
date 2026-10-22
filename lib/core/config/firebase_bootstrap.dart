@@ -26,6 +26,10 @@ Future<FirebaseServices> initializeFirebase(AppEnvironment environment) async {
     await auth.useAuthEmulator(environment.emulatorHost, 9099);
     firestore.useFirestoreEmulator(environment.emulatorHost, 8080);
   }
-  await auth.setPersistence(Persistence.SESSION);
+  // LOCAL keeps the Auth token across tab closes so MI/organizers stay signed in.
+  // Emulator reload still has the known FlutterFire SESSION limitation documented in operations.md.
+  await auth.setPersistence(
+    environment.useEmulators ? Persistence.SESSION : Persistence.LOCAL,
+  );
   return FirebaseServices(auth: auth, firestore: firestore);
 }

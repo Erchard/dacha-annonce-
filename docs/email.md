@@ -1,27 +1,22 @@
-# Email-сповіщення підтримки
+# Пошта «Дачі»
 
-Стан на 2026-09-29: **blocked для фактичної доставки**. Звернення, коментарі та історія працюють незалежно від пошти. UI прямо повідомляє, що автоматичні сповіщення не підключені. Firebase Auth verification/reset — окремі штатні листи Firebase, вони не замінюють повідомлення підтримки.
+## Поточний стан — 15.10.2026
 
-Перевірені варіанти:
+Листи підтвердження адреси та відновлення пароля надсилає Firebase Auth штатним способом. Перевірка production-конфігурації `dacha-annonce` через Identity Toolkit API підтвердила `sendEmail.method = DEFAULT`, `senderLocalPart = noreply` для обох шаблонів. Email/Password увімкнений; `dacha-annonce.web.app` і `dacha-annonce.firebaseapp.com` входять до authorizedDomains.
 
-| Варіант | Що доступно | Чого бракує для цього проєкту |
-|---|---|---|
-| Resend Free | 3000 листів/місяць, до 100/день; API та idempotency key із вікном 24 години | Акаунт відправника, дозволений sender, API secret, адреса developer і trusted runtime |
-| Brevo Free | До 300 листів/день, transactional email | Акаунт, підтверджений sender, API secret, адреса developer і trusted runtime |
-| Cloudflare Workers Free + один із провайдерів | Trusted code й secret storage; до 100000 requests/день у межах обмежень Free | Окремий акаунт/runtime, налаштований доступ до Firebase та схема повторів/доставки |
-| Cloud Functions for Firebase | Серверні Firestore triggers | Deployment потребує Blaze; суперечить поточній вимозі без billing |
+Наданий власником лист від 29.09.2026 — підтвердження email від `noreply@dacha-annonce.firebaseapp.com`. Код застосунку й зараз викликає Firebase `sendEmailVerification` та `sendPasswordResetEmail`. Особиста пошта розробника не використовується як відправник цих листів. Змінювати ці налаштування для повернення старого відправника не потрібно.
 
-Рішення: не додавати непідключений adapter, browser SMTP, відкритий relay або клієнтську чергу з довільним одержувачем. Без даних sender/recipient і доступного trusted runtime неможливо чесно підтвердити доставку. Акаунти, billing і domain автоматично не створювались. Вибір окремого runtime треба узгодити як реальну додаткову залежність; для малого застосунку це більше експлуатації, ніж решта поточного backend.
+Ця перевірка підтверджує налаштування, а не фактичну доставку нового листа. Під час перевірки листи не надсилалися, паролі й конфігурація Auth не змінювалися.
 
-Для завершення потрібні підтверджений sender у вибраному провайдері, developer email і дозволений trusted runtime. Секрет налаштовується безпосередньо там, не в чаті/репозиторії/Flutter. Реалізація має читати незмінну history-подію, перевіряти actorRole=admin та created/commented, застосовувати fixed recipient, durable sent state за ticketId/version, retries із контрольованою невизначеною доставкою. Самого 24h idempotency Resend недостатньо для необмежених повторів. Після підключення обов’язкові реальні ticket/comment delivery, негативний developer-comment тест і повтор без дубля.
+## Сповіщення про звернення
 
-Повний MVP із email ще не завершений. Core release без автоматичної пошти потребує окремо прийнятого відхилення; воно не припускається мовчки.
+Автоматичні листи про тікети та коментарі **не підключені**. Вони є окремою функцією від листів Firebase Auth. Звернення та коментарі на сайті працюють незалежно від пошти.
 
-Джерела, перевірено 2026-09-29:
-- https://resend.com/pricing
-- https://resend.com/docs/dashboard/emails/idempotency-keys
-- https://help.brevo.com/hc/en-us/articles/208580669-FAQs-What-are-the-limits-of-the-Free-plan
-- https://www.brevo.com/products/transactional-email/
-- https://developers.cloudflare.com/workers/platform/limits/
-- https://developers.cloudflare.com/workers/configuration/secrets/
-- https://firebase.google.com/docs/functions/get-started
+Власник скасував підхід із надсиланням через особистий Gmail. Не встановлювати Apps Script, не надавати йому OAuth-дозволи і не створювати поштові тригери. Файли `scripts/support-mail/` залишені як неактивний прототип, а не інструкція до запуску.
+
+14.10.2026 було створено чернетку Apps Script:
+https://script.google.com/home/projects/1tvSWoHsIirzQI_YwtzoJyitwpXDwJCmSOfcM4RSHGJATOaDQW8V34sIs/edit
+
+Підключення зупинено до OAuth та запуску `installNotifications`; тригер не встановлювався, тестові листи не надсилалися. Чернетка не є діючим поштовим сервісом. Попередній план отримання дозволів скасовано, а не відкладено.
+
+Для завершення сповіщень потрібен окремий службовий відправник і доступ до сервісу надсилання. Адреси розробника та MI мають бути одержувачами, а не особистими відправниками. Не підміняти адресу Firebase Auth і не зберігати поштові секрети у Flutter Web. Підключення вважати завершеним лише після перевірки реальної доставки.

@@ -17,24 +17,43 @@ function fixture(role='admin',action='created') {
  context.api_=(path,body)=>{
    if(failRead)throw Error('Firestore HTTP 503');
    if(path.endsWith(':runQuery'))return body.structuredQuery.startAt?[]:[{document:doc}];
-   if(path.endsWith('/users/mi'))return {fields:{role:sv('admin'),isDisabled:{booleanValue:false}}};
+   if(path.endsWith('/users/mi'))return {fields:{role:sv(role),isDisabled:{booleanValue:false}}};
+   if(path.endsWith('/users/dev'))return {fields:{role:sv('developer'),isDisabled:{booleanValue:false}}};
    if(path.endsWith('/supportTickets/t'))return {fields:{title:sv('Назва'),body:sv('PRIVATE'),createdBy:sv('mi')}};
-   if(path.endsWith('/comments/comment'))return {fields:{authorId:sv('mi'),authorRole:sv(role),ticketVersion:{integerValue:'1'}}};
+   if(path.endsWith('/comments/comment'))return {fields:{authorId:sv(h.actorId.stringValue),authorRole:sv(role),ticketVersion:{integerValue:'1'},body:sv('Текст коментаря SECRET')}};
    if(path===doc.name)return doc;
    throw Error('Unexpected path '+path);
  };
  return {context,doc,sent,state:()=>JSON.parse(saved),failMail:()=>failMail=true,failRead:()=>failRead=true,quotaZero:()=>quota=0,lock:()=>locked=true,
- setState:s=>saved=JSON.stringify(s)};
+ setState:s=>saved=JSON.stringify(s),h};
 }
-test('MI ticket sends fixed recipient/link without body; second poll does not duplicate',()=>{
- const f=fixture();f.context.sendNotifications();f.context.sendNotifications();assert.equal(f.sent.length,1);assert.equal(f.sent[0].to,'arsenguzhva@gmail.com');assert.match(f.sent[0].body,/support\/t/);assert.ok(!f.sent[0].body.includes('PRIVATE'));assert.ok(f.state().cursor);
+test('MI ticket duplicates full text to developer; second poll does not resend',()=>{
+ const f=fixture();f.context.sendNotifications();f.context.sendNotifications();assert.equal(f.sent.length,1);assert.equal(f.sent[0].to,'arsenguzhva@gmail.com');assert.match(f.sent[0].body,/support\/t/);assert.match(f.sent[0].body,/PRIVATE/);assert.match(f.sent[0].subject,/нове звернення/);assert.ok(f.state().cursor);
 });
-test('MI comment sends one notification, including comment attached to status change',()=>{
- for(const action of ['commented','status_changed']){const f=fixture('admin',action);f.context.sendNotifications();assert.equal(f.sent.length,1);assert.match(f.sent[0].subject,/коментар/);}
+test('MI comment emails developer and duplicates comment text to admin',()=>{
+ for(const action of ['commented','status_changed']){
+  const f=fixture('admin',action);f.context.sendNotifications();
+  assert.equal(f.sent.length,2);
+  assert.equal(f.sent[0].to,'arsenguzhva@gmail.com');
+  assert.match(f.sent[0].subject,/коментар/);
+  assert.equal(f.sent[1].to,'mkyrylenko@ukr.net');
+  assert.match(f.sent[1].body,/Текст коментаря SECRET/);
+  assert.ok(!f.sent[0].body.includes('SECRET'));
+ }
 });
-test('developer comments and unrelated history do not send mail',()=>{
- for(const role of ['developer','organizer']){const f=fixture(role,'commented');f.context.sendNotifications();assert.equal(f.sent.length,0);}
- const f=fixture();f.doc.name=root+'/bookings/t/history/1';f.context.sendNotifications();assert.equal(f.sent.length,0);
+test('developer comment duplicates text to admin only',()=>{
+ const f=fixture('developer','commented');
+ f.h.actorId=sv('dev');
+ f.doc.fields.actorId=sv('dev');
+ f.context.sendNotifications();
+ assert.equal(f.sent.length,1);
+ assert.equal(f.sent[0].to,'mkyrylenko@ukr.net');
+ assert.match(f.sent[0].body,/Текст коментаря SECRET/);
+ assert.match(f.sent[0].subject,/коментар/);
+});
+test('unrelated history and organizer do not send mail',()=>{
+ const f=fixture('organizer','commented');f.context.sendNotifications();assert.equal(f.sent.length,0);
+ const g=fixture();g.doc.name=root+'/bookings/t/history/1';g.context.sendNotifications();assert.equal(g.sent.length,0);
 });
 test('mismatched comment author is rejected before sending',()=>{
  const f=fixture('admin','commented');f.doc.fields.actorId=sv('other');assert.throws(()=>f.context.sendNotifications());assert.equal(f.sent.length,0);assert.equal(f.state().pending.status,'retry');

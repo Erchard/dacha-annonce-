@@ -22,6 +22,7 @@ export async function execute(db,actor,id,action,{expectedVersion=0,draft={},rea
   if(['edit','reschedule'].includes(action)) Object.assign(n,draft);
   if(typeof n.responsibleName!=='string') n.responsibleName='';
   if(action==='createApproved'||action==='approve') n.status='approved';
+  if(action==='delete') n.status='deleted';
   if(action==='reject') {n.status='rejected';n.rejectionReason=reason;}
   if(action==='cancel') {n.status='cancelled';n.cancelledAt=now;n.cancelledBy=actor;n.cancellationReason=reason;}
   n.version=expectedVersion+1;n.updatedAt=now;n.updatedBy=actor;
@@ -59,6 +60,7 @@ export async function execute(db,actor,id,action,{expectedVersion=0,draft={},rea
    oldStartAt:b?.startAt??null,oldEndAt:b?.endAt??null,newStartAt:n.startAt,newEndAt:n.endAt}});
   if(n.status==='approved') {
    const data=Object.fromEntries(['title','description','roomId','roomNameSnapshot','locationSnapshot','responsibleName','startAt','endAt','timeZone'].map(k=>[k,n[k]]));
+   for(const key of ['contactPhone','notes','directions']) if(key in n) data[key]=n[key];
    Object.assign(data,{bookingVersion:n.version,publishedAt:previousPublic?.publishedAt??now,updatedAt:now,schemaVersion:1});
    plan.push({path:`publicEvents/${id}`,data});
   } else if(previousPublic) plan.push({path:`publicEvents/${id}`,delete:true});

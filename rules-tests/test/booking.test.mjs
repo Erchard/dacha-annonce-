@@ -144,3 +144,80 @@ test('stale commands fail without overwriting the committed version',async()=>{
  assert.equal((await getDoc(doc(admin,'bookings/request'))).data().status,'approved');
 });
 
+
+test('admin deletes event atomically, releases slots and preserves immutable history',async()=>{
+ await approved();const before=(await getDoc(doc(admin,'bookings/event'))).data();
+ await assertSucceeds(execute(admin,'admin','event','delete',{expectedVersion:1}));
+ assert.equal((await getDoc(doc(admin,'bookings/event'))).data().status,'deleted');
+ assert.equal((await getDoc(doc(admin,'publicEvents/event'))).exists(),false);
+ for(const path of blocks(before).keys()) assert.ok(Object.values((await getDoc(doc(admin,path))).data().slots).every(v=>v===''));
+ assert.equal((await getDoc(doc(admin,'bookings/event/history/2'))).data().action,'delete');
+ await assertFails(execute(admin,'admin','event','edit',{expectedVersion:2,draft:draft()}));
+ await approved('replacement');
+});
+test('deletion refuses missing witnesses and cannot mutate unrelated booking fields',async()=>{
+ await approved();
+ for(const variant of ['occupancy','history','public','title']) await assertFails(execute(admin,'admin','event','delete',{expectedVersion:1,tamper:plan=>{
+  if(variant==='title')plan.find(p=>p.path==='bookings/event').data.title='Forged title';
+  else plan.splice(plan.findIndex(p=>variant==='occupancy'?p.path.includes('/occupancy/'):variant==='history'?p.path.includes('/history/'):p.path.startsWith('publicEvents/')),1);
+ }}));
+ assert.equal((await getDoc(doc(admin,'bookings/event'))).data().status,'approved');
+});
+test('ordinary organizers cannot delete; admin may delete cancelled and pending requests',async()=>{
+ await pending();await assertFails(execute(owner,'owner','request','delete',{expectedVersion:1}));
+ await assertSucceeds(execute(admin,'admin','request','delete',{expectedVersion:1}));
+ await approved();await execute(admin,'admin','event','cancel',{expectedVersion:1});
+ await assertSucceeds(execute(admin,'admin','event','delete',{expectedVersion:2}));
+});
+
+test('trusted organizer publishes and manages own events only; revoked permission takes effect',async()=>{
+ await assertFails(execute(owner,'owner','ordinary','createApproved',{draft:draft()}));
+ await env.withSecurityRulesDisabled(async ctx=>updateDoc(doc(ctx.firestore(),'users/owner'),{canPublish:true}));
+ await assertSucceeds(execute(owner,'owner','own','createApproved',{draft:draft()}));
+ await assertSucceeds(execute(owner,'owner','own','edit',{expectedVersion:1,draft:draft({title:'Змінена подія'})}));
+ await assertSucceeds(execute(owner,'owner','own','reschedule',{expectedVersion:2,draft:draft({roomId:'room-b'})}));
+ await approved('admin-event');
+ await assertFails(execute(owner,'owner','admin-event','delete',{expectedVersion:1}));
+ await assertSucceeds(execute(owner,'owner','own','delete',{expectedVersion:3}));
+ await assertSucceeds(execute(owner,'owner','second','createApproved',{draft:draft({roomId:'room-b'})}));
+ await env.withSecurityRulesDisabled(async ctx=>updateDoc(doc(ctx.firestore(),'users/owner'),{canPublish:false}));
+ await assertFails(execute(owner,'owner','second','edit',{expectedVersion:1,draft:draft({roomId:'room-b',title:'Не дозволено'})}));
+ await assertFails(execute(owner,'owner','second','delete',{expectedVersion:1}));
+});
+
+test('admin deletes a past approved event and releases historical occupancy', async () => {
+ const past = Math.floor((Date.now() - 86400000) / 1800000) * 1800000;
+ await env.withSecurityRulesDisabled(async context => {
+  await execute(context.firestore(), 'admin', 'past', 'createApproved', {
+   draft: draft({startAt: ts(past), endAt: ts(past + 3600000)}),
+  });
+ });
+ const before = (await getDoc(doc(admin, 'bookings/past'))).data();
+ await assertFails(execute(owner, 'owner', 'past', 'delete', {expectedVersion: 1}));
+ await assertSucceeds(execute(admin, 'admin', 'past', 'delete', {expectedVersion: 1}));
+ assert.equal((await getDoc(doc(admin, 'publicEvents/past'))).exists(), false);
+ assert.equal((await getDoc(doc(admin, 'bookings/past'))).data().status, 'deleted');
+ for (const path of blocks(before).keys()) {
+  assert.ok(Object.values((await getDoc(doc(admin, path))).data().slots).every(v => v === ''));
+ }
+ assert.equal((await getDoc(doc(admin, 'bookings/past/history/2'))).data().action, 'delete');
+});
+
+test('schedule details publish, filter and edit; forged projections and invalid fields denied', async () => {
+ const details={contactPhone:'+380 00 000 00 00',notes:'Взяти блокнот',directions:['Культура','Для дітей']};
+ await assertSucceeds(approved('details',draft(details)));
+ const pub=env.unauthenticatedContext().firestore();
+ assert.equal((await getDoc(doc(pub,'publicEvents/details'))).data().notes,details.notes);
+ const found=await assertSucceeds(getDocs(query(collection(pub,'publicEvents'),where('directions','array-contains-any',['Культура']),limit(100))));
+ assert.equal(found.size,1);
+ await assertFails(execute(admin,'admin','details','edit',{expectedVersion:1,draft:draft(details),tamper:plan=>{plan.find(p=>p.path==='publicEvents/details').data.contactPhone='12345';}}));
+ await assertSucceeds(execute(admin,'admin','details','edit',{expectedVersion:1,draft:draft({...details,notes:'Оновлено'})}));
+ assert.equal((await getDoc(doc(pub,'publicEvents/details'))).data().notes,'Оновлено');
+ for(const patch of [{directions:['Невідомий']},{directions:['Клуб','Клуб']},{directions:'Клуб'},{notes:'x'.repeat(501)},{contactPhone:'not a phone'},{contactPhone:null}]) {
+  await assertFails(execute(admin,'admin','details','edit',{expectedVersion:2,draft:draft({...details,...patch})}));
+ }
+ await assertFails(execute(owner,'owner','details','edit',{expectedVersion:2,draft:draft(details)}));
+ await assertSucceeds(execute(admin,'admin','details','reschedule',{expectedVersion:2,draft:draft({...details,roomId:'room-b'})}));
+ assert.equal((await getDoc(doc(pub,'publicEvents/details'))).data().contactPhone,details.contactPhone);
+ await assertSucceeds(execute(admin,'admin','details','delete',{expectedVersion:3}));
+});

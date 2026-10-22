@@ -9,10 +9,11 @@ service cloud.firestore {
     function active() { return role() in ['organizer','admin','developer']; }
     function admin() { return role() == 'admin'; }
     function organizer() { return role() == 'organizer'; }
+    function publisher() { return organizer() && profile().get('canPublish',false) == true; }
     function bounded() { return request.query.limit != null && request.query.limit > 0 && request.query.limit <= 100; }
     function text(v, low, high) {
-      return v is string && v.size() >= low && v.size() <= high
-        && (low == 0 || v.matches('^\\S([\\s\\S]*\\S)?$'));
+      return v is string && v.size() <= high
+        && (low == 0 || (v.size() >= low && v.matches('^\\S([\\s\\S]*\\S)?$')));
     }
     function id(v) { return v is string && v.matches('^[^/]{1,128}$'); }
     function exact(d, keys) { return d.size() == keys.size() && d.keys().hasOnly(keys); }
@@ -35,8 +36,9 @@ service cloud.firestore {
         && d.schemaVersion is int && d.schemaVersion == 1 && d.revision is int && id(d.lastAuditId);
     }
     function validUser(d) {
-      return exact(d,['displayName','role','isDisabled','createdAt','updatedAt','createdBy','updatedBy',
-        'schemaVersion','adminRevision','lastAdminAuditId'])
+      return (d.keys().hasAll(['displayName','role','isDisabled','createdAt','updatedAt','createdBy','updatedBy',
+        'schemaVersion','adminRevision','lastAdminAuditId']) && d.keys().hasOnly(['displayName','role','isDisabled','createdAt','updatedAt','createdBy','updatedBy',
+        'schemaVersion','adminRevision','lastAdminAuditId','canPublish'])) && d.get('canPublish',false) is bool
         && text(d.displayName,2,80) && d.role in ['organizer','admin','developer']
         && d.isDisabled is bool && d.createdAt is timestamp && d.updatedAt == request.time
         && id(d.createdBy) && d.updatedBy == request.auth.uid && d.schemaVersion is int && d.schemaVersion == 1
@@ -47,7 +49,7 @@ service cloud.firestore {
       allow get: if request.auth != null && (uid == request.auth.uid || admin());
       allow list: if admin() && bounded();
       allow create: if request.auth != null && uid == request.auth.uid && validUser(request.resource.data)
-        && request.resource.data.role == 'organizer' && request.resource.data.isDisabled == false
+        && request.resource.data.role == 'organizer' && request.resource.data.isDisabled == false && request.resource.data.get('canPublish',false) == false
         && request.resource.data.createdAt == request.time && request.resource.data.createdBy == uid
         && request.resource.data.adminRevision == 0 && request.resource.data.lastAdminAuditId == null;
       allow update: if validUser(request.resource.data) && (
@@ -58,7 +60,13 @@ service cloud.firestore {
           && request.resource.data.isDisabled != resource.data.isDisabled
           && request.resource.data.adminRevision == resource.data.adminRevision + 1
           && auditMatches('user',uid,{'isDisabled':resource.data.isDisabled},
-            {'isDisabled':request.resource.data.isDisabled},request.resource.data.adminRevision,request.resource.data.lastAdminAuditId)));
+            {'isDisabled':request.resource.data.isDisabled},request.resource.data.adminRevision,request.resource.data.lastAdminAuditId))
+        || (admin() && resource.data.role == 'organizer'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['canPublish','updatedAt','updatedBy','adminRevision','lastAdminAuditId'])
+          && request.resource.data.get('canPublish',false) != resource.data.get('canPublish',false)
+          && request.resource.data.adminRevision == resource.data.adminRevision + 1
+          && auditMatches('user',uid,{'canPublish':resource.data.get('canPublish',false)},
+            {'canPublish':request.resource.data.canPublish},request.resource.data.adminRevision,request.resource.data.lastAdminAuditId)));
       allow delete: if false;
     }
     match /rooms/{roomId} {
@@ -72,7 +80,9 @@ service cloud.firestore {
         && request.resource.data.revision == resource.data.revision + 1
         && auditMatches('room',roomId,roomView(resource.data),roomView(request.resource.data),
           request.resource.data.revision,request.resource.data.lastAuditId);
-      allow delete: if false;
+      allow delete: if admin() && resource.data.isActive == false
+        && auditMatches('room',roomId,roomView(resource.data),{},resource.data.revision + 1,
+          'delete-' + roomId + '-' + string(resource.data.revision));
     }
     function validAudit(a) {
       return exact(a,['entityType','entityId','action','actorId','at','changedFields','revision','before','after'])
@@ -84,9 +94,13 @@ service cloud.firestore {
     }
     function roomAudit(a, auditId) {
       let p = /databases/$(database)/documents/rooms/$(a.entityId);
-      let n = getAfter(p).data;
+      let n = existsAfter(p) ? getAfter(p).data : null;
       let existed = exists(p);
-      return n.lastAuditId == auditId && n.revision == a.revision && n.updatedAt == request.time
+      return !existsAfter(p)
+        ? existed && get(p).data.isActive == false && a.action == 'delete'
+          && a.before == roomView(get(p).data) && a.after == {} && a.revision == get(p).data.revision + 1
+          && auditId == 'delete-' + a.entityId + '-' + string(get(p).data.revision)
+        : n.lastAuditId == auditId && n.revision == a.revision && n.updatedAt == request.time
         && a.after == roomView(n)
         && (existed ? a.before == roomView(get(p).data) && n.revision == get(p).data.revision + 1
           && a.action == (n.isActive == false && get(p).data.isActive ? 'archive' : 'update')
@@ -98,8 +112,10 @@ service cloud.firestore {
       let n = getAfter(p).data;
       return b.role == 'organizer' && n.lastAdminAuditId == auditId && n.adminRevision == a.revision
         && n.adminRevision == b.adminRevision + 1 && n.updatedAt == request.time
-        && a.before == {'isDisabled':b.isDisabled} && a.after == {'isDisabled':n.isDisabled}
-        && b.isDisabled != n.isDisabled && a.action == 'set_disabled';
+        && (a.action == 'set_disabled'
+          ? a.before == {'isDisabled':b.isDisabled} && a.after == {'isDisabled':n.isDisabled} && b.isDisabled != n.isDisabled
+          : a.action == 'set_publishing' && a.before == {'canPublish':b.get('canPublish',false)}
+            && a.after == {'canPublish':n.canPublish} && b.get('canPublish',false) != n.canPublish);
     }
     match /adminAudit/{auditId} {
       allow get: if admin();
@@ -121,15 +137,23 @@ service cloud.firestore {
     function activeRoom(d) { return getAfter(/databases/$(database)/documents/rooms/$(d.roomId)).data.isActive; }
     function sameInterval(b,n) { return b.roomId == n.roomId && b.startAt == n.startAt && b.endAt == n.endAt; }
     function validBooking(d) {
-      return exact(d,['organizerId','roomId','title','description','responsibleName','startAt','endAt','timeZone','status',
+      let directions = d.get('directions',[]);
+      let phone = d.get('contactPhone','');
+      let start = d.startAt.toMillis();
+      let end = d.endAt.toMillis();
+      return d.keys().toSet().difference(['contactPhone','notes','directions'].toSet()) == ['organizerId','roomId','title','description','responsibleName','startAt','endAt','timeZone','status',
         'roomNameSnapshot','locationSnapshot','rejectionReason','cancellationReason','reviewedAt','reviewedBy',
-        'cancelledAt','cancelledBy','occupancyBlockIds','version','lastAction','createdAt','updatedAt','createdBy','updatedBy','schemaVersion'])
+        'cancelledAt','cancelledBy','occupancyBlockIds','version','lastAction','createdAt','updatedAt','createdBy','updatedBy','schemaVersion'].toSet()
         && id(d.organizerId) && id(d.roomId) && text(d.title,3,120) && text(d.description,0,5000)
         && text(d.responsibleName,0,80)
+        && (phone == '' || (phone is string && phone.matches('^[+0-9() .-]{5,32}$')))
+        && text(d.get('notes',''),0,500)
+        && directions is list && directions.size() <= 15
+        && directions.toSet().size() == directions.size()
+        && directions.hasOnly(['Емоційна підтримка','Екологія','Культура','Громадська активність','Освіта, просвіта','Толока','Благоустрій Дачі','Психологічна допомога','Майстер-клас','Клуб','Для людей старшого віку','Для дітей','Для молоді','Творчі зустрічі','Концерт'])
         && d.startAt is timestamp && d.endAt is timestamp && d.startAt < d.endAt
-        && d.startAt.toMillis() % 1800000 == 0 && d.endAt.toMillis() % 1800000 == 0
-        && d.startAt == timestamp.value(d.startAt.toMillis()) && d.endAt == timestamp.value(d.endAt.toMillis())
-        && d.endAt - d.startAt <= duration.value(6,'h') && d.startAt.toMillis() >= 0
+        && [start % 1800000,end % 1800000,d.startAt,d.endAt] == [0,0,timestamp.value(start),timestamp.value(end)]
+        && end - start <= 21600000 && start >= 0
         && d.status in ['pending','approved','rejected','cancelled']
         && text(d.roomNameSnapshot,0,80) && text(d.locationSnapshot,0,160)
         && d.occupancyBlockIds == blockIds(d) && d.version is int && d.version >= 1
@@ -150,21 +174,22 @@ service cloud.firestore {
       return r.isActive && [n.roomNameSnapshot,n.locationSnapshot] == [r.name,r.locationLabel];
     }
     function createAllowed(n) {
-      let actorRole = role();
+      let actor = profile();
+      let actorRole = actor.isDisabled ? '' : actor.role;
       let room = getAfter(/databases/$(database)/documents/rooms/$(n.roomId)).data;
       return [n.version,n.createdBy,n.createdAt,n.lastAction,n.organizerId] == [1,request.auth.uid,request.time,'create',request.auth.uid]
         && future(n) && room.isActive
         && (n.status == 'pending'
           ? (actorRole == 'admin' || actorRole == 'organizer' && request.auth.token.email_verified == true)
             && [n.roomNameSnapshot,n.locationSnapshot] == ['','']
-          : n.status == 'approved' && actorRole == 'admin'
+          : n.status == 'approved' && (actorRole == 'admin' || (actorRole == 'organizer' && actor.get('canPublish',false)))
             && [n.roomNameSnapshot,n.locationSnapshot,n.reviewedAt,n.reviewedBy] == [room.name,room.locationLabel,request.time,request.auth.uid]);
     }
     function pendingTransition(b,n,actorRole,fields) {
       return n.status == 'pending'
         ? (actorRole == 'admin' || actorRole == 'organizer' && b.organizerId == request.auth.uid && request.auth.token.email_verified == true)
           && n.lastAction == 'edit' && future(n) && activeRoom(n)
-          && fields.hasOnly(['roomId','title','description','responsibleName','startAt','endAt','occupancyBlockIds','version','lastAction','updatedAt','updatedBy'])
+          && fields.hasOnly(['roomId','title','description','responsibleName','contactPhone','notes','directions','startAt','endAt','occupancyBlockIds','version','lastAction','updatedAt','updatedBy'])
         : actorRole == 'admin' && [n.reviewedAt,n.reviewedBy] == [request.time,request.auth.uid]
           && (n.status == 'rejected'
             ? n.lastAction == 'reject' && fields.hasOnly(['status','rejectionReason','reviewedAt','reviewedBy','version','lastAction','updatedAt','updatedBy'])
@@ -172,7 +197,8 @@ service cloud.firestore {
               && fields.hasOnly(['status','roomNameSnapshot','locationSnapshot','reviewedAt','reviewedBy','version','lastAction','updatedAt','updatedBy']));
     }
     function transition(b,n) {
-      let actorRole = role();
+      let actor = profile();
+      let actorRole = actor.isDisabled ? '' : actor.role;
       let fields = n.diff(b).affectedKeys();
       return [n.organizerId,n.createdAt,n.createdBy] == [b.organizerId,b.createdAt,b.createdBy]
         && n.version == b.version + 1 && b.status in ['pending','approved']
@@ -181,7 +207,7 @@ service cloud.firestore {
             && (actorRole == 'admin' || actorRole == 'organizer' && b.organizerId == request.auth.uid && b.startAt > request.time)
             && fields.hasOnly(['status','cancellationReason','cancelledAt','cancelledBy','version','lastAction','updatedAt','updatedBy'])
           : b.status == 'pending' ? pendingTransition(b,n,actorRole,fields)
-          : n.status == 'approved' && actorRole == 'admin'
+          : n.status == 'approved' && (actorRole == 'admin' || (actorRole == 'organizer' && actor.get('canPublish',false)) && b.organizerId == request.auth.uid)
             && [n.reviewedAt,n.reviewedBy] == [b.reviewedAt,b.reviewedBy]
             && (sameInterval(b,n)
               ? n.lastAction == 'edit' && [n.roomNameSnapshot,n.locationSnapshot] == [b.roomNameSnapshot,b.locationSnapshot]
@@ -228,44 +254,63 @@ service cloud.firestore {
       return n.status == 'approved' && n.roomId == roomId && blockId in n.occupancyBlockIds;
     }
     function locks(b,n,bookingId) {
+      let newIds = n.status == 'approved' ? n.occupancyBlockIds : [];
+      let unchangedRoom = b != null && b.roomId == n.roomId;
       return (n.status != 'approved' || (blockAfter(n,n.roomId,n.occupancyBlockIds[0],bookingId)
         && (n.occupancyBlockIds.size() == 1 || blockAfter(n,n.roomId,n.occupancyBlockIds[1],bookingId))))
         && (b == null || b.status != 'approved' || (
-          (isNewBlock(n,b.roomId,b.occupancyBlockIds[0]) || blockAfter(n,b.roomId,b.occupancyBlockIds[0],bookingId))
-          && (b.occupancyBlockIds.size() == 1 || isNewBlock(n,b.roomId,b.occupancyBlockIds[1])
+          ((unchangedRoom && b.occupancyBlockIds[0] in newIds) || blockAfter(n,b.roomId,b.occupancyBlockIds[0],bookingId))
+          && (b.occupancyBlockIds.size() == 1 || (unchangedRoom && b.occupancyBlockIds[1] in newIds)
             || blockAfter(n,b.roomId,b.occupancyBlockIds[1],bookingId))));
+    }
+    function bookingUpdate(b,n,bookingId) {
+      return (n.status == 'deleted' ? deletionAllowed(b,n) : validBooking(n) && transition(b,n))
+        && mirrors(b,n,bookingId) && locks(b,n,bookingId);
     }
     match /bookings/{bookingId} {
       allow get: if admin() || (organizer() && (!exists(/databases/$(database)/documents/bookings/$(bookingId)) || resource.data.organizerId == request.auth.uid));
       allow list: if bounded() && ownerOrAdmin(resource.data);
       allow create: if validBooking(request.resource.data) && createAllowed(request.resource.data)
         && mirrors(null,request.resource.data,bookingId) && locks(null,request.resource.data,bookingId);
-      allow update: if validBooking(request.resource.data) && transition(resource.data,request.resource.data)
-        && mirrors(resource.data,request.resource.data,bookingId) && locks(resource.data,request.resource.data,bookingId);
+      allow update: if bookingUpdate(resource.data,request.resource.data,bookingId);
       allow delete: if false;
+    }
+    function deletionAllowed(b,n) {
+      return (admin() || publisher() && b.organizerId == request.auth.uid) && b.status != 'deleted' && n.status == 'deleted'
+        && n.lastAction == 'delete' && n.version == b.version + 1
+        && n.updatedAt == request.time && n.updatedBy == request.auth.uid
+        && n.diff(b).affectedKeys().hasOnly(['status','lastAction','version','updatedAt','updatedBy']);
     }
     function changedBooking(b,n) { return n.updatedAt == request.time && (b == null ? n.version == 1 : n.version == b.version + 1); }
     function beforeBooking(bookingId) {
       let p = /databases/$(database)/documents/bookings/$(bookingId);
       return exists(p) ? get(p).data : null;
     }
+    function publicMatches(bookingId,n,publishedAt) {
+      let b = getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data;
+      return n.schemaVersion is int && n.bookingVersion is int
+        && changedBooking(beforeBooking(bookingId),b) && b.status == 'approved'
+        && n.diff(publicData(b,publishedAt)).affectedKeys().hasOnly(['contactPhone','notes','directions'])
+        && n.get('contactPhone','') == b.get('contactPhone','')
+        && n.get('notes','') == b.get('notes','')
+        && n.get('directions',[]) == b.get('directions',[]);
+    }
     match /publicEvents/{bookingId} {
       allow get: if true;
       allow list: if bounded();
-      allow create, update: if admin() && request.resource.data.schemaVersion is int && request.resource.data.bookingVersion is int
-        && changedBooking(beforeBooking(bookingId),getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data)
-        && getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.status == 'approved'
-        && request.resource.data == publicData(getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data,
-          resource == null ? request.time : resource.data.publishedAt);
+      allow create, update: if (admin() || publisher()) && publicMatches(bookingId, request.resource.data, resource == null ? request.time : resource.data.publishedAt);
       allow delete: if active() && changedBooking(beforeBooking(bookingId),getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data)
-        && getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.status == 'cancelled';
+        && getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data.status in ['cancelled','deleted'];
+    }
+    function historyMatches(bookingId,version,h) {
+      let b = beforeBooking(bookingId);
+      let n = getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data;
+      return version == string(h.version) && changedBooking(b,n) && h == historyData(b,n);
     }
     match /bookings/{bookingId}/history/{version} {
       allow get: if ownerOrAdmin(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
       allow list: if bounded() && ownerOrAdmin(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
-      allow create: if active() && version == string(request.resource.data.version)
-        && changedBooking(beforeBooking(bookingId),getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data)
-        && request.resource.data == historyData(beforeBooking(bookingId),getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data);
+      allow create: if active() && historyMatches(bookingId,version,request.resource.data);
       allow update, delete: if false;
     }
     function occupancyWrite(roomId,blockId) {
@@ -274,26 +319,27 @@ service cloud.firestore {
       let b = beforeBooking(bookingId);
       let n = getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data;
       let previous = resource == null ? emptySlots() : resource.data.slots;
-      let oldKeys = rangeKeys(b,roomId,d.blockStartAt.toMillis());
-      let newKeys = rangeKeys(n,roomId,d.blockStartAt.toMillis());
+      let base = d.blockStartAt.toMillis();
+      let oldKeys = rangeKeys(b,roomId,base);
+      let newKeys = rangeKeys(n,roomId,base);
+      let previousOwned = owned(previous,bookingId);
       return exact(d,['blockStartAt','slots','lastMutationBookingId','lastMutationVersion','updatedAt','updatedBy','schemaVersion'])
-        && d.blockStartAt is timestamp && d.blockStartAt.toMillis() >= 0
-        && d.blockStartAt == timestamp.value(d.blockStartAt.toMillis())
-        && d.blockStartAt.toMillis() % 21600000 == 0 && blockId == string(int(d.blockStartAt.toMillis() / 1000))
+        && d.blockStartAt is timestamp && base >= 0
+        && [d.blockStartAt,base % 21600000,blockId] == [timestamp.value(base),0,string(int(base / 1000))]
         && d.slots is map && exact(d.slots,['s00','s01','s02','s03','s04','s05','s06','s07','s08','s09','s10','s11'])
-        && id(bookingId) && d.updatedAt == request.time && d.updatedBy == request.auth.uid && d.schemaVersion is int && d.schemaVersion == 1
-        && d.lastMutationVersion is int && d.lastMutationVersion == n.version
+        && id(bookingId) && d.schemaVersion is int && d.lastMutationVersion is int
+        && [d.updatedAt,d.updatedBy,d.schemaVersion,d.lastMutationVersion] == [request.time,request.auth.uid,1,n.version]
         && changedBooking(b,n) && (isNewBlock(n,roomId,blockId) || b != null && isNewBlock(b,roomId,blockId))
-        && owned(previous,bookingId).hasAll(oldKeys)
-        && owned(previous,bookingId).union(owned(previous,'')).hasAll(newKeys)
+        && previousOwned.hasAll(oldKeys)
+        && previousOwned.union(owned(previous,'')).hasAll(newKeys)
         && owned(d.slots,bookingId).hasAll(newKeys)
         && owned(d.slots,'').hasAll(oldKeys.difference(newKeys))
         && d.slots.diff(previous).affectedKeys().difference(oldKeys.union(newKeys)).size() == 0;
     }
     match /rooms/{roomId}/occupancy/{blockId} {
-      allow get: if admin() || organizer();
+      allow get: if role() in ['admin','organizer'];
       allow list: if admin() && bounded();
-      allow create, update: if (admin() || organizer()) && occupancyWrite(roomId,blockId);
+      allow create, update: if (role() in ['admin','organizer']) && occupancyWrite(roomId,blockId);
       allow delete: if false;
     }
     function supportStaff() { return role() in ['admin','developer']; }
@@ -362,6 +408,12 @@ service cloud.firestore {
         allow create: if supportStaff() && supportCommentWrite(ticketId,commentId,request.resource.data);
         allow update, delete: if false;
       }
+      match /attachments/{attachmentId} {
+        allow get: if supportStaff();
+        allow list: if supportStaff() && bounded();
+        allow create: if supportStaff() && supportAttachmentWrite(ticketId,request.resource.data);
+        allow update, delete: if false;
+      }
     }
     function ticketBefore(ticketId) {
       let p = /databases/$(database)/documents/supportTickets/$(ticketId);
@@ -383,8 +435,17 @@ service cloud.firestore {
         && c.createdAt == request.time && c.ticketVersion is int && c.ticketVersion == n.version
         && c.schemaVersion is int && c.schemaVersion == 1;
     }
+    function supportAttachmentWrite(ticketId,a) {
+      return ticketBefore(ticketId) != null
+        && exact(a,['fileName','contentType','bytes','size','authorId','authorRole','createdAt','schemaVersion'])
+        && text(a.fileName,1,160)
+        && a.contentType in ['image/jpeg','image/png','image/webp']
+        && a.bytes is bytes && a.size is int && a.size == a.bytes.size()
+        && a.size > 0 && a.size <= 700000
+        && a.authorId == request.auth.uid && a.authorRole == role()
+        && a.createdAt == request.time && a.schemaVersion is int && a.schemaVersion == 1;
+    }
 
     match /{document=**} { allow read, write: if false; }
   }
 }
-

@@ -16,6 +16,8 @@ class AdminRoomsPage extends ConsumerStatefulWidget {
 
 class _AdminRoomsPageState extends ConsumerState<AdminRoomsPage> {
   List<Room> rooms = [];
+  String? deleteErrorRoomId;
+  Object? deleteError;
   PageCursor? next;
   Object? error;
   bool busy = true;
@@ -99,6 +101,8 @@ class _AdminRoomsPageState extends ConsumerState<AdminRoomsPage> {
                     room.isActive ? 'Доступна для нових заявок' : 'В архіві',
                   ),
                   Text(room.locationLabel),
+                  if (deleteErrorRoomId == room.id && deleteError != null)
+                    Problem(deleteError!),
                   Wrap(
                     spacing: 12,
                     runSpacing: 8,
@@ -107,6 +111,37 @@ class _AdminRoomsPageState extends ConsumerState<AdminRoomsPage> {
                         onPressed: () => edit(room),
                         child: const Text('Редагувати'),
                       ),
+                      if (!room.isActive)
+                        ActionButton(
+                          label: 'Видалити',
+                          outlined: true,
+                          action: () async {
+                            if (!await confirmAction(
+                              context,
+                              'Видалити локацію?',
+                              'Локація зникне зі списків без можливості відновлення. Якщо це тимчасове закриття, залиште її в архіві. Локацію із заявками або схваленими подіями спочатку потрібно звільнити.',
+                            )) {
+                              return;
+                            }
+                            setState(() {
+                              deleteErrorRoomId = null;
+                              deleteError = null;
+                            });
+                            try {
+                              await ref
+                                  .read(repositoryProvider)
+                                  .deleteRoom(room);
+                              if (mounted) await load(reset: true);
+                            } catch (e) {
+                              if (mounted) {
+                                setState(() {
+                                  deleteErrorRoomId = room.id;
+                                  deleteError = e;
+                                });
+                              }
+                            }
+                          },
+                        ),
                       if (room.isActive)
                         ActionButton(
                           label: 'Архівувати',
@@ -226,6 +261,7 @@ class _RoomEditorState extends ConsumerState<_RoomEditor> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const SizedBox(height: 16),
               TextFormField(
                 controller: name,
                 decoration: const InputDecoration(labelText: 'Назва'),
@@ -234,21 +270,27 @@ class _RoomEditorState extends ConsumerState<_RoomEditor> {
                     ? 'Щонайменше 2 символи.'
                     : null,
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: location,
                 decoration: const InputDecoration(labelText: 'Розташування'),
                 maxLength: 160,
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: description,
                 decoration: const InputDecoration(labelText: 'Опис'),
                 maxLines: 3,
                 maxLength: 1000,
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: capacity,
                 decoration: const InputDecoration(
-                  labelText: 'Місткість (необов’язково)',
+                  labelText: 'Кількість людей',
+                  helperText: 'Одне число, наприклад 20. Необов’язково.',
+                  helperMaxLines: 4,
+                  errorMaxLines: 5,
                 ),
                 validator: (value) {
                   final text = value?.trim() ?? '';
@@ -260,6 +302,7 @@ class _RoomEditorState extends ConsumerState<_RoomEditor> {
                   return null;
                 },
               ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: order,
                 decoration: const InputDecoration(
@@ -353,6 +396,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         DropdownButtonFormField<UserRole>(
+          isExpanded: true,
           initialValue: role,
           decoration: const InputDecoration(labelText: 'Роль'),
           items: const [
@@ -402,6 +446,30 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                         ? 'Заблоковано'
                         : 'Активний обліковий запис',
                   ),
+                  if (user.role == UserRole.organizer)
+                    ActionButton(
+                      label: user.canPublish
+                          ? 'Забрати самостійну публікацію'
+                          : 'Дозволити самостійну публікацію',
+                      outlined: true,
+                      action: () async {
+                        if (!await confirmAction(
+                          context,
+                          'Змінити право публікації?',
+                          'Цей організатор зможе публікувати, редагувати, переносити й видаляти власні події без вашого схвалення. Чужі події та адміністративні розділи залишаться недоступними.',
+                        )) {
+                          return;
+                        }
+                        await ref
+                            .read(repositoryProvider)
+                            .setPublishing(
+                              user.id,
+                              !user.canPublish,
+                              expectedRevision: user.adminRevision,
+                            );
+                        if (mounted) await load(reset: true);
+                      },
+                    ),
                   if (user.role == UserRole.organizer)
                     ActionButton(
                       label: user.isDisabled ? 'Розблокувати' : 'Заблокувати',

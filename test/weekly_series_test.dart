@@ -22,9 +22,9 @@ void main() {
       until: DateTime(2026, 4, 5),
     );
     expect(dates.map((date) => date.label), [
-      '2026-03-22',
-      '2026-03-29',
-      '2026-04-05',
+      '22.03.2026',
+      '29.03.2026',
+      '05.04.2026',
     ]);
     expect(dates.every((date) => date.problem == null), isTrue);
     expect(dates.map((date) => zone.toKyiv(date.interval!.start).hour), [
@@ -42,7 +42,7 @@ void main() {
       until: DateTime(2026, 3, 29),
     );
     expect(dates.first.problem, isNull);
-    expect(dates.last.label, '2026-03-29');
+    expect(dates.last.label, '29.03.2026');
     expect(dates.last.interval, isNull);
     expect(dates.last.problem, contains('не існує'));
   });

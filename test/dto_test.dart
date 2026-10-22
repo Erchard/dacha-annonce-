@@ -25,6 +25,7 @@ void main() {
     'displayName': 'Організатор',
     'role': 'organizer',
     'isDisabled': false,
+    'canPublish': false,
     'createdAt': now,
     'updatedAt': now,
     'createdBy': 'uid',
@@ -54,8 +55,25 @@ void main() {
       UserProfileDto.encode(UserProfileDto.decode('uid', profile)),
       profile,
     );
-    expect(PublicEventDto.encode(PublicEventDto.decode('event', event)), event);
+    expect(PublicEventDto.encode(PublicEventDto.decode('event', event)), {
+      ...event,
+      'contactPhone': '',
+      'notes': '',
+      'directions': <String>[],
+    });
     expect(RoomDto.decode('room', room).createdAt.isUtc, isTrue);
+  });
+  test('legacy profiles cannot publish; permission type stays strict', () {
+    final legacy = {...profile}..remove('canPublish');
+    expect(UserProfileDto.decode('uid', legacy).canPublish, isFalse);
+    expect(
+      UserProfileDto.decode('uid', {...profile, 'canPublish': true}).canPublish,
+      isTrue,
+    );
+    expect(
+      () => UserProfileDto.decode('uid', {...profile, 'canPublish': 'true'}),
+      throwsA(isA<DomainException>()),
+    );
   });
   test('unknown roles, types, schema versions and fields fail explicitly', () {
     for (final patch in [

@@ -46,6 +46,7 @@ Future<void> main() async {
     stage = 'organizer pending';
     await login('organizer');
     check(auth.currentUser!.emailVerified, 'seed verified');
+    final organizerUid = auth.currentUser!.uid;
     final start = DateTime.fromMillisecondsSinceEpoch(
       (DateTime.now().millisecondsSinceEpoch ~/ 21600000 + 20) * 21600000 +
           18000000,
@@ -55,6 +56,9 @@ Future<void> main() async {
       roomId: room,
       title: 'Flutter наскрізна перевірка',
       description: 'Подія створена справжнім Flutter-клієнтом.',
+      contactPhone: '+380 00 000 00 00',
+      notes: 'Перевірка примітки',
+      directions: ['Культура', 'Для дітей'],
       interval: BookingInterval(at, at.add(const Duration(hours: 6))),
     );
     final id = engine.newId();
@@ -76,6 +80,13 @@ Future<void> main() async {
       (await repo.getPublishedEvent(id))!.title ==
           'Flutter наскрізна перевірка',
       'public projection',
+    );
+    final published = (await repo.getPublishedEvent(id))!;
+    check(
+      published.contactPhone == '+380 00 000 00 00' &&
+          published.notes == 'Перевірка примітки' &&
+          published.directions.length == 2,
+      'schedule fields round trip',
     );
     final conflict = engine.newId();
     await rejected(
@@ -118,6 +129,69 @@ Future<void> main() async {
           4,
       'atomic history',
     );
+    stage = 'delete and trusted publishing';
+    await login('admin');
+    await engine.execute(id, BookingAction.delete, expectedVersion: 4);
+    check(await repo.getBooking(id) == null, 'deleted detail unavailable');
+    final organizerProfile =
+        (await db.collection('users').doc(organizerUid).get()).data()!;
+    await repo.setPublishing(
+      organizerUid,
+      true,
+      expectedRevision: organizerProfile['adminRevision'] as int,
+    );
+    await login('organizer');
+    final token = engine.newId();
+    final seriesIds = ['$token-20261020', '$token-20261027'];
+    for (var i = 0; i < seriesIds.length; i++) {
+      await engine.execute(
+        seriesIds[i],
+        BookingAction.createApproved,
+        expectedVersion: 0,
+        draft: draft('room-b', start.add(Duration(days: 14 + i * 7))),
+      );
+    }
+    final occurrences = await engine.seriesOccurrences(seriesIds.first);
+    check(occurrences.length == 2, 'own series query');
+    for (final occurrence in occurrences) {
+      await engine.execute(
+        occurrence.id,
+        BookingAction.delete,
+        expectedVersion: occurrence.version,
+      );
+    }
+    check(
+      (await engine.seriesOccurrences(seriesIds.first)).isEmpty,
+      'series retry excludes deleted',
+    );
+    check(
+      (await repo.listBookings(PageRequest())).items
+          .every((b) => !seriesIds.contains(b.id)),
+      'deleted absent from list',
+    );
+    await login('admin');
+    final currentProfile =
+        (await db.collection('users').doc(organizerUid).get()).data()!;
+    await repo.setPublishing(
+      organizerUid,
+      false,
+      expectedRevision: currentProfile['adminRevision'] as int,
+    );
+    await login('organizer');
+    await rejected(
+      () => engine.execute(
+        engine.newId(),
+        BookingAction.createApproved,
+        expectedVersion: 0,
+        draft: draft('room-b', start.add(const Duration(days: 40))),
+      ),
+      ErrorCode.permissionDenied,
+    );
+    await login('admin');
+    final spare = (await repo.getRoom('room-b'))!;
+    await repo.archive(spare.id, expectedRevision: spare.revision);
+    await repo.deleteRoom((await repo.getRoom(spare.id))!);
+    check(await repo.getRoom(spare.id) == null, 'room deleted');
     stage = 'support lifecycle';
     await login('admin');
     final ticket = support.newId();

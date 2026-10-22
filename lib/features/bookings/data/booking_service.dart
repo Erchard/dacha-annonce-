@@ -17,6 +17,39 @@ class BookingService {
   final Clock clock;
   String newId() => db.collection('bookings').doc().id;
 
+  static String? seriesPrefix(String id) =>
+      RegExp(r'^[A-Za-z0-9]{20}-[0-9]{8}$').hasMatch(id)
+      ? id.substring(0, 21)
+      : null;
+
+  Future<List<Booking>> seriesOccurrences(String id) => firestoreCall(() async {
+    final prefix = seriesPrefix(id);
+    if (prefix == null) throw const DomainException(ErrorCode.validation);
+    final user = auth.currentUser;
+    if (user == null) throw const DomainException(ErrorCode.unauthenticated);
+    final profile = (await db.collection('users').doc(user.uid).get()).data();
+    if (profile == null || profile['isDisabled'] != false) {
+      throw const DomainException(ErrorCode.permissionDenied);
+    }
+    Query<Map<String, dynamic>> query = db.collection('bookings');
+    if (profile['role'] != 'admin') {
+      query = query.where('organizerId', isEqualTo: user.uid);
+    }
+    final result = await query
+        .orderBy(FieldPath.documentId)
+        .startAt([prefix])
+        .endAt(['$prefix\uf8ff'])
+        .limit(27)
+        .get();
+    if (result.docs.length > 26) {
+      throw const DomainException(ErrorCode.validation);
+    }
+    return result.docs
+        .map((d) => BookingDto.decode(d.id, d.data()))
+        .where((b) => b.status != BookingStatus.deleted)
+        .toList();
+  });
+
   Future<void> execute(
     String id,
     BookingAction action, {
@@ -60,10 +93,12 @@ class BookingService {
       final owner =
           profile.role == UserRole.organizer &&
           (creating || booking!.organizerId == user.uid);
+      final publisher = owner && profile.canPublish;
       if (!admin && !owner) {
         throw const DomainException(ErrorCode.permissionDenied);
       }
-      if (booking != null &&
+      if (action != BookingAction.delete &&
+          booking != null &&
           ![
             BookingStatus.pending,
             BookingStatus.approved,
@@ -73,13 +108,20 @@ class BookingService {
       final selected = draft ?? booking?.draft;
       if (selected == null) throw const DomainException(ErrorCode.validation);
       switch (action) {
+        case BookingAction.delete:
+          if ((!admin && !publisher) ||
+              booking!.status == BookingStatus.deleted) {
+            throw const DomainException(ErrorCode.permissionDenied);
+          }
         case BookingAction.createPending:
           if (!admin && !user.emailVerified) {
             throw const DomainException(ErrorCode.emailNotVerified);
           }
           selected.interval.validateFuture(clock);
         case BookingAction.createApproved:
-          if (!admin) throw const DomainException(ErrorCode.permissionDenied);
+          if (!admin && !publisher) {
+            throw const DomainException(ErrorCode.permissionDenied);
+          }
           selected.interval.validateFuture(clock);
         case BookingAction.approve:
         case BookingAction.reject:
@@ -96,14 +138,14 @@ class BookingService {
               throw const DomainException(ErrorCode.emailNotVerified);
             }
             selected.interval.validateFuture(clock);
-          } else if (!admin ||
+          } else if ((!admin && !publisher) ||
               selected.roomId != booking.draft.roomId ||
               selected.interval.start != booking.draft.interval.start ||
               selected.interval.end != booking.draft.interval.end) {
             throw const DomainException(ErrorCode.permissionDenied);
           }
         case BookingAction.reschedule:
-          if (!admin ||
+          if ((!admin && !publisher) ||
               booking!.status != BookingStatus.approved ||
               !booking.draft.interval.start.isAfter(clock.now()) ||
               draft == null) {
@@ -142,6 +184,9 @@ class BookingService {
           'title': selected.title,
           'description': selected.description,
           'responsibleName': selected.responsibleName,
+          'contactPhone': selected.contactPhone,
+          'notes': selected.notes,
+          'directions': selected.directions,
           'startAt': Timestamp.fromDate(selected.interval.start),
           'endAt': Timestamp.fromDate(selected.interval.end),
         },
@@ -158,6 +203,7 @@ class BookingService {
         next['status'] = 'rejected';
         next['rejectionReason'] = reason!.trim();
       }
+      if (action == BookingAction.delete) next['status'] = 'deleted';
       if (action == BookingAction.cancel) {
         next.addAll({
           'status': 'cancelled',
@@ -297,6 +343,9 @@ class BookingService {
             'timeZone',
           ])
             key: next[key],
+          'contactPhone': next['contactPhone'] ?? '',
+          'notes': next['notes'] ?? '',
+          'directions': next['directions'] ?? <String>[],
           'bookingVersion': expectedVersion + 1,
           'publishedAt': previousPublic == null
               ? now

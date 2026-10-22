@@ -1,3 +1,5 @@
+import '../../bookings/domain/event_details.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/data/firestore_fields.dart';
@@ -13,6 +15,9 @@ class PublicEventDto {
     'roomNameSnapshot',
     'locationSnapshot',
     'responsibleName',
+    'contactPhone',
+    'notes',
+    'directions',
     'startAt',
     'endAt',
     'timeZone',
@@ -22,7 +27,12 @@ class PublicEventDto {
     'schemaVersion',
   };
   static PublicEvent decode(String id, Map<String, dynamic> data) {
-    final f = Fields(data, keys);
+    final f = Fields({
+      'contactPhone': '',
+      'notes': '',
+      'directions': <String>[],
+      ...data,
+    }, keys);
     if (f.value<String>('timeZone') != 'Europe/Kyiv') {
       throw const DomainException(ErrorCode.validation, field: 'timeZone');
     }
@@ -34,6 +44,9 @@ class PublicEventDto {
       roomNameSnapshot: f.value('roomNameSnapshot'),
       locationSnapshot: f.value('locationSnapshot'),
       responsibleName: f.value('responsibleName'),
+      contactPhone: f.value('contactPhone'),
+      notes: f.value('notes'),
+      directions: checkedDirections(f.value<List<dynamic>>('directions')),
       interval: BookingInterval(f.time('startAt'), f.time('endAt')),
       bookingVersion: f.value('bookingVersion'),
       publishedAt: f.time('publishedAt'),
@@ -48,6 +61,9 @@ class PublicEventDto {
     'roomNameSnapshot': event.roomNameSnapshot,
     'locationSnapshot': event.locationSnapshot,
     'responsibleName': event.responsibleName,
+    'contactPhone': event.contactPhone,
+    'notes': event.notes,
+    'directions': event.directions,
     'startAt': Timestamp.fromDate(event.interval.start),
     'endAt': Timestamp.fromDate(event.interval.end),
     'timeZone': 'Europe/Kyiv',

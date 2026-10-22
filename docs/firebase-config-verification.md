@@ -2,7 +2,7 @@
 
 Scope: точкове виправлення Stage 1 за командою користувача, без переходу до наступних Stage.
 
-Звичайний запуск використовує `DefaultFirebaseOptions.currentPlatform` з наявного `lib/firebase_options.dart` для `dacha-annonce`. `AppEnvironment` більше не приймає вручну Firebase API key, app ID, project ID, sender ID чи auth domain. Для `USE_FIREBASE_EMULATORS=true` обираються окремі фіксовані demo options, а platform getter не викликається. Збережено loopback host validation, порядок підключення емуляторів, session persistence Auth та вимкнений disk cache Firestore.
+Звичайний запуск використовує `DefaultFirebaseOptions.currentPlatform` з наявного `lib/firebase_options.dart` для `dacha-annonce`. `AppEnvironment` більше не приймає вручну Firebase API key, app ID, project ID, sender ID чи auth domain. Для `USE_FIREBASE_EMULATORS=true` обираються окремі фіксовані demo options, а platform getter не викликається. Збережено loopback host validation, порядок підключення емуляторів, LOCAL Auth persistence у production (SESSION лише на емуляторі) та вимкнений disk cache Firestore.
 
 Початкова умова з RegExp у файлі була синтаксично повною; підозра про відсутню дужку не підтвердилася. Стару ручну production-валідацію прибрано разом із дублюванням конфігурації.
 

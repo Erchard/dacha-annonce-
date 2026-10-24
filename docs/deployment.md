@@ -141,3 +141,9 @@ Production dacha-annonce: опубліковано Firestore Rules, два ін�
 ## MI tickets 24.10.2026 — Hosting + Rules
 
 Production `dacha-annonce`: Hosting + Firestore Rules для шести звернень від 24.10 (reopen UX, notes, directions лише в розкладі, меню, `/feedback`, нова вкладка). Alias CLI лишається `demo-dacha`; деплой із `--project dacha-annonce`. «Комунікація» свідомо не входила в цей реліз.
+
+## MI open tickets after 24.10 — 2026-10-25
+
+Production `dacha-annonce`: Firestore Rules + Hosting release «MI reopen-new, notes, help/contacts 2026-10-25». Commit `f6a161d`. main.dart.js SHA256: `B3F916551EAC838AAFC7668D646F959914654FEFA34A3C03B256244C12324E08`. Smoke HEAD 200: `/`, `/schedule`, `/help`, `/contacts`, `/support`.
+
+Закрито в Firestore: u7oe…, t34l4…, Mzh2Kx…, SIPac7…, k3dnap… → `done`; Lapx1iz… → `done` (відгук); 6wKQC4… → `closed` (тест). Поза випуском: Комунікація, email support/Auth, «Про нас».

@@ -33,8 +33,10 @@ List<String> allowedTicketStatuses(String role, String status) =>
       }
     : role == 'admin'
     ? switch (status) {
+        'new' => ['closed'],
         'done' => ['closed', 'accepted'],
-        'rejected' => ['closed'],
+        'rejected' => ['closed', 'accepted'],
+        'closed' => ['accepted'],
         _ => [],
       }
     : [];
@@ -182,6 +184,14 @@ class SupportRepository {
   );
   Future<void> priority(Ticket t, String priority) =>
       _write(t.id, t.version, 'priority_changed', priority: priority);
+  Future<void> editContent(Ticket t, {required String title, required String body}) =>
+      _write(
+        t.id,
+        t.version,
+        'edited',
+        title: checkedText(title.trim(), 'title', 3, 160),
+        body: checkedText(body.trim(), 'body', 10, 10000),
+      );
 
   Future<void> addAttachment(
     String ticketId, {
@@ -278,6 +288,15 @@ class SupportRepository {
               priority == old!['priority'])) {
         throw const DomainException(ErrorCode.permissionDenied);
       }
+      if (action == 'edited' &&
+          (role != 'admin' ||
+              old == null ||
+              old['status'] != 'new' ||
+              title == null ||
+              body == null ||
+              (title == old['title'] && body == old['body']))) {
+        throw const DomainException(ErrorCode.permissionDenied);
+      }
       final now = FieldValue.serverTimestamp();
       final next = <String, dynamic>{
         ...?old,
@@ -291,6 +310,10 @@ class SupportRepository {
           'createdAt': now,
           'schemaVersion': 1,
           'lastCommentId': null,
+        },
+        if (action == 'edited') ...{
+          'title': title,
+          'body': body,
         },
         'status': ?status,
         'priority': ?priority,

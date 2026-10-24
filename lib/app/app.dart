@@ -228,7 +228,10 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
       path: '/bookings/:id/edit',
       builder: (context, state) => ProtectedPage(
         roles: const [UserRole.organizer, UserRole.admin],
-        child: BookingFormPage(id: state.pathParameters['id']),
+        child: BookingFormPage(
+          id: state.pathParameters['id'],
+          editSeries: state.uri.queryParameters['series'] == '1',
+        ),
       ),
     ),
     GoRoute(

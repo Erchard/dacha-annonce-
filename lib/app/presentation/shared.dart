@@ -67,14 +67,21 @@ String statusLabel(BookingStatus status) => switch (status) {
 };
 
 class AppFrame extends ConsumerWidget {
-  const AppFrame({super.key, required this.title, required this.child});
+  const AppFrame({
+    super.key,
+    required this.title,
+    required this.child,
+    this.backgroundColor,
+  });
   final String title;
   final Widget child;
+  final Color? backgroundColor;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider).asData?.value;
     final profile = ref.watch(profileProvider).asData?.value;
     return Scaffold(
+      backgroundColor: backgroundColor,
       appBar: AppBar(
         title: TextButton(
           onPressed: () => context.go('/'),
@@ -134,7 +141,7 @@ class AppFrame extends ConsumerWidget {
                   onTap: () => context.go('/support'),
                 ),
               ListTile(
-                title: Text(session == null ? 'Увійти' : 'Обліковий запис'),
+                title: Text(session == null ? 'Увійти' : 'Мій профіль'),
                 onTap: () =>
                     context.go(session == null ? '/login' : '/account'),
               ),
@@ -175,12 +182,12 @@ class AppFrame extends ConsumerWidget {
                       runSpacing: 4,
                       children: [
                         TextButton(
-                          onPressed: () => context.go('/calendar'),
+                          onPressed: () => context.go('/'),
                           child: const Text('Календар'),
                         ),
                         TextButton(
                           onPressed: () => context.go('/schedule'),
-                          child: const Text('Розклад подій'),
+                          child: const Text('Розклад'),
                         ),
                         TextButton(
                           onPressed: () => context.go('/rooms'),

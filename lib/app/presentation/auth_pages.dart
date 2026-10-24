@@ -255,110 +255,130 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         profile = ref.watch(profileProvider);
     if (session.isLoading || profile.isLoading) {
       return const AppFrame(
-        title: 'Обліковий запис',
+        title: 'Мій профіль',
         child: LinearProgressIndicator(),
       );
     }
     if (session.hasError || profile.hasError) {
       return AppFrame(
-        title: 'Обліковий запис',
+        title: 'Мій профіль',
         child: Problem(session.error ?? profile.error!),
       );
     }
     final auth = session.asData?.value, user = profile.asData?.value;
     if (auth == null) {
       return AppFrame(
-        title: 'Обліковий запис',
-        child: FilledButton(
-          onPressed: () => context.go('/login'),
-          child: const Text('Увійти'),
+        title: 'Мій профіль',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Увійдіть, щоб змінити ім’я або вийти з сайту.'),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => context.go('/login'),
+              child: const Text('Увійти'),
+            ),
+          ],
         ),
       );
     }
     return AppFrame(
-      title: user == null ? 'Відновлення профілю' : 'Обліковий запис',
+      title: user == null ? 'Завершити реєстрацію' : 'Мій профіль',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (user != null) Text('Вітаємо, ${user.displayName}!'),
+          const Text(
+            'Тут можна змінити відображуване ім’я, перевірити пошту й вийти з сайту.',
+          ),
+          const SizedBox(height: 16),
           if (user != null)
-            SelectableText('Код акаунта для адміністратора: ${user.id}'),
-          if (user?.isDisabled == true)
-            const Text(
-              'Обліковий запис заблоковано. Зверніться до адміністрації.',
+            Text(
+              'Вітаємо, ${user.displayName}!',
+              style: Theme.of(context).textTheme.titleLarge,
             ),
+          if (user?.isDisabled == true) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'Профіль заблоковано. Зверніться до адміністрації Дачі.',
+            ),
+          ],
           if (user == null)
             const Text(
-              'Вхід уже створено, але профіль не зберігся. Укажіть ім’я, щоб завершити реєстрацію.',
+              'Вхід успішний, але ім’я ще не збережене. Укажіть його нижче.',
             ),
           if (user?.isDisabled != true) ...[
+            const SizedBox(height: 20),
             SizedBox(
               width: 460,
               child: TextField(
                 controller: name,
                 decoration: InputDecoration(
-                  labelText: user == null ? 'Ваше ім’я' : 'Нове ім’я',
+                  labelText: user == null ? 'Ваше ім’я' : 'Змінити ім’я',
                   hintText: user?.displayName,
+                  helperText: 'Це ім’я бачать у розкладі та заявках.',
                 ),
                 maxLength: 80,
               ),
             ),
             ActionButton(
-              label: user == null ? 'Створити профіль' : 'Зберегти ім’я',
+              label: user == null ? 'Зберегти ім’я' : 'Оновити ім’я',
               action: () => user == null
                   ? ref.read(authRepositoryProvider).recoverProfile(name.text)
                   : ref.read(repositoryProvider).updateMyDisplayName(name.text),
             ),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           Text(
             auth.emailVerified
-                ? 'Електронну адресу підтверджено.'
-                : 'Підтвердьте електронну адресу перед поданням заявки.',
+                ? 'Електронну адресу підтверджено — можна подавати заявки.'
+                : 'Підтвердьте електронну адресу, щоб подавати заявки на події.',
           ),
           if (!auth.emailVerified)
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                ActionButton(
-                  label: 'Надіслати лист підтвердження',
-                  action: () async {
-                    if (sentAt != null &&
-                        DateTime.now().difference(sentAt!) <
-                            const Duration(seconds: 60)) {
-                      throw const DomainException(
-                        ErrorCode.validation,
-                        field: 'resendCooldown',
-                      );
-                    }
-                    await ref.read(authRepositoryProvider).sendVerification();
-                    sentAt = DateTime.now();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Лист надіслано. Повторне надсилання доступне через хвилину.',
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  ActionButton(
+                    label: 'Надіслати лист підтвердження',
+                    action: () async {
+                      if (sentAt != null &&
+                          DateTime.now().difference(sentAt!) <
+                              const Duration(seconds: 60)) {
+                        throw const DomainException(
+                          ErrorCode.validation,
+                          field: 'resendCooldown',
+                        );
+                      }
+                      await ref.read(authRepositoryProvider).sendVerification();
+                      sentAt = DateTime.now();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Лист надіслано. Повторне надсилання доступне через хвилину.',
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                  },
-                ),
-                ActionButton(
-                  label: 'Я підтвердив адресу',
-                  outlined: true,
-                  action: () => ref.read(authRepositoryProvider).reloadUser(),
-                ),
-              ],
+                        );
+                      }
+                    },
+                  ),
+                  ActionButton(
+                    label: 'Я підтвердив адресу',
+                    outlined: true,
+                    action: () => ref.read(authRepositoryProvider).reloadUser(),
+                  ),
+                ],
+              ),
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           ActionButton(
-            label: 'Вийти',
+            label: 'Вийти з сайту',
             outlined: true,
             action: () async {
               await ref.read(authRepositoryProvider).signOut();
-              if (context.mounted) context.go('/');
+              if (context.mounted) context.go('/schedule');
             },
           ),
         ],

@@ -1,4 +1,3 @@
-import '../../features/bookings/domain/event_details.dart';
 import 'schedule_table.dart';
 
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../core/domain/page.dart';
 import '../../core/time/time_zone_service.dart';
 import '../../features/auth/domain/user_profile.dart';
+import '../../features/bookings/domain/event_details.dart';
 import '../../features/calendar/domain/public_event.dart';
 import '../../features/rooms/domain/room.dart';
 import '../providers.dart';
@@ -35,11 +35,11 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
   late String view;
   List<PublicEvent> events = [];
   List<Room> rooms = [];
+  final Set<String> selectedDirections = {};
   PageCursor? next, roomNext;
   bool busy = true;
   int generation = 0;
   Object? error;
-  final Set<String> selectedDirections = {};
   String? invalidDate;
 
   DateTime civil(DateTime value) =>
@@ -203,6 +203,15 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     );
   }
 
+  bool get isSchedule => widget.pagePath == '/schedule';
+  bool get lockedRoom => isSchedule && widget.roomId != null;
+  String? lockedRoomName() {
+    final id = widget.roomId;
+    if (id == null) return null;
+    return rooms.where((r) => r.id == id).map((r) => r.name).firstOrNull ??
+        'обрана локація';
+  }
+
   @override
   Widget build(BuildContext context) {
     final signedIn = ref.watch(sessionProvider).asData?.value != null;
@@ -213,16 +222,28 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
       'week' => 7,
       _ => 0,
     };
+    final viewChoices = isSchedule
+        ? const [('day', 'День'), ('week', 'Тиждень'), ('month', 'Місяць')]
+        : const [
+            ('day', 'День'),
+            ('week', 'Тиждень'),
+            ('month', 'Місяць'),
+            ('list', 'Список'),
+          ];
     return AppFrame(
-      title: widget.pagePath == '/calendar'
-          ? 'Календар'
-          : widget.pagePath == '/schedule'
-          ? 'Розклад подій'
-          : 'Розклад',
+      backgroundColor: isSchedule ? scheduleCream : null,
+      title: isSchedule ? 'Розклад' : 'Календар',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Зустрічі, події та спільні справи. Час — Київ.'),
+          if (isSchedule)
+            ScheduleBrandHeader(
+              view: view,
+              focus: focus,
+              roomLabel: lockedRoom ? lockedRoomName() : null,
+            )
+          else
+            const Text('Зустрічі, події та спільні справи. Час — Київ.'),
           if (admin) ...[
             const SizedBox(height: 12),
             const Text(
@@ -234,24 +255,16 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final item in const [
-                ('day', 'День'),
-                ('week', 'Тиждень'),
-                ('month', 'Місяць'),
-                ('list', 'Список'),
-              ])
-                if (item.$1 != 'list' ||
-                    (widget.pagePath != '/calendar' &&
-                        widget.pagePath != '/schedule'))
-                  item.$1 == view
-                      ? FilledButton(
-                          onPressed: () => navigate(focus, nextView: item.$1),
-                          child: Text(item.$2),
-                        )
-                      : OutlinedButton(
-                          onPressed: () => navigate(focus, nextView: item.$1),
-                          child: Text(item.$2),
-                        ),
+              for (final item in viewChoices)
+                item.$1 == view
+                    ? FilledButton(
+                        onPressed: () => navigate(focus, nextView: item.$1),
+                        child: Text(item.$2),
+                      )
+                    : OutlinedButton(
+                        onPressed: () => navigate(focus, nextView: item.$1),
+                        child: Text(item.$2),
+                      ),
             ],
           ),
           const SizedBox(height: 12),
@@ -306,32 +319,172 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
             ],
           ),
           const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            key: ValueKey('${widget.roomId}:${rooms.length}'),
-            initialValue: rooms.any((r) => r.id == widget.roomId)
-                ? widget.roomId
-                : null,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Локація'),
-            items: [
-              const DropdownMenuItem<String>(
-                value: null,
-                child: Text('Усі локації'),
-              ),
-              for (final room in rooms)
-                DropdownMenuItem(
-                  value: room.id,
-                  child: Text(room.name, overflow: TextOverflow.ellipsis),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final sideBySide = constraints.maxWidth >= 720;
+              final locationField = lockedRoom
+                  ? InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Локація',
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              lockedRoomName()!,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => navigate(
+                              focus,
+                              room: null,
+                              changeRoom: true,
+                            ),
+                            child: const Text('Усі локації'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : DropdownButtonFormField<String>(
+                      key: ValueKey('${widget.roomId}:${rooms.length}'),
+                      initialValue: rooms.any((r) => r.id == widget.roomId)
+                          ? widget.roomId
+                          : null,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Локація'),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: null,
+                          child: Text('Усі локації'),
+                        ),
+                        for (final room in rooms)
+                          DropdownMenuItem(
+                            value: room.id,
+                            child: Text(
+                              room.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          navigate(focus, room: value, changeRoom: true),
+                    );
+              final directionsField = InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Події за напрямками',
                 ),
-            ],
-            onChanged: (value) =>
-                navigate(focus, room: value, changeRoom: true),
+                child: InkWell(
+                  onTap: busy
+                      ? null
+                      : () async {
+                          final next = Set<String>.from(selectedDirections);
+                          final applied = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => StatefulBuilder(
+                              builder: (context, setDialog) => AlertDialog(
+                                title: const Text('Події за напрямками'),
+                                content: SizedBox(
+                                  width: 420,
+                                  child: SingleChildScrollView(
+                                    child: Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      children: [
+                                        for (final direction in eventDirections)
+                                          FilterChip(
+                                            label: Text(direction),
+                                            selected: next.contains(direction),
+                                            onSelected: (selected) {
+                                              setDialog(() {
+                                                if (selected) {
+                                                  next.add(direction);
+                                                } else {
+                                                  next.remove(direction);
+                                                }
+                                              });
+                                            },
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () {
+                                      next.clear();
+                                      Navigator.pop(context, true);
+                                    },
+                                    child: const Text('Усі напрямки'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Скасувати'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Застосувати'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                          if (applied == true && mounted) {
+                            setState(() {
+                              selectedDirections
+                                ..clear()
+                                ..addAll(next);
+                            });
+                            load(reset: true);
+                          }
+                        },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          selectedDirections.isEmpty
+                              ? 'Усі напрямки'
+                              : 'Обрано: ${selectedDirections.length}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down),
+                    ],
+                  ),
+                ),
+              );
+              if (sideBySide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: locationField),
+                    const SizedBox(width: 12),
+                    Expanded(child: directionsField),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  locationField,
+                  const SizedBox(height: 12),
+                  directionsField,
+                ],
+              );
+            },
           ),
-          if (widget.roomId != null && !rooms.any((r) => r.id == widget.roomId))
+          if (widget.roomId != null &&
+              rooms.isNotEmpty &&
+              !rooms.any((r) => r.id == widget.roomId))
             const Text(
               'Фільтр локації заданий посиланням; її може бути архівовано.',
             ),
-          if (roomNext != null)
+          if (roomNext != null && !lockedRoom)
             ActionButton(
               label: 'Завантажити ще локації',
               outlined: true,
@@ -347,56 +500,6 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 }
               },
             ),
-          const SizedBox(height: 12),
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: Text(
-              selectedDirections.isEmpty
-                  ? 'Напрямки: усі'
-                  : 'Напрямків вибрано: ${selectedDirections.length}',
-            ),
-            children: [
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Показати події хоча б одного з вибраних напрямків.',
-                ),
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  for (final direction in eventDirections)
-                    FilterChip(
-                      label: Text(direction),
-                      selected: selectedDirections.contains(direction),
-                      onSelected: busy
-                          ? null
-                          : (selected) {
-                              setState(() {
-                                if (selected) {
-                                  selectedDirections.add(direction);
-                                } else {
-                                  selectedDirections.remove(direction);
-                                }
-                              });
-                              load(reset: true);
-                            },
-                    ),
-                ],
-              ),
-              if (selectedDirections.isNotEmpty)
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () {
-                          setState(selectedDirections.clear);
-                          load(reset: true);
-                        },
-                  child: const Text('Показати всі напрямки'),
-                ),
-            ],
-          ),
           const SizedBox(height: 20),
           if (invalidDate != null)
             Text(invalidDate!)
@@ -407,21 +510,23 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
             if (!busy && error == null && events.isEmpty && next == null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 32),
-                child: Text(
-                  view == 'day'
-                      ? 'Цього дня подій немає.'
-                      : view == 'week'
-                      ? 'Цього тижня подій немає.'
-                      : 'Цього місяця подій ще немає.',
-                ),
+                child: Text(switch (view) {
+                  'day' => 'Цього дня подій немає.',
+                  'week' => 'Цього тижня подій немає.',
+                  _ => 'Цього місяця подій немає.',
+                }),
               ),
             LayoutBuilder(
               builder: (context, constraints) {
                 final wide =
-                    constraints.maxWidth >= 760 &&
+                    constraints.maxWidth >= (isSchedule ? 720 : 760) &&
                     MediaQuery.textScalerOf(context).scale(1) <= 1.4;
-                if (widget.pagePath == '/schedule') {
-                  return ScheduleTable(events: events, wide: wide);
+                if (isSchedule) {
+                  return ScheduleTable(
+                    events: events,
+                    wide: wide,
+                    view: view,
+                  );
                 }
                 return Column(
                   children: [
@@ -429,12 +534,11 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                       _MonthGrid(
                         month: DateTime(focus.year, focus.month),
                         events: events,
+                        pagePath: widget.pagePath,
                       ),
                     if (wide && view == 'week')
                       _WeekGrid(focus: focus, events: events),
-                    if (widget.pagePath != '/calendar' ||
-                        !wide ||
-                        view == 'day')
+                    if (!wide || view == 'day' || view == 'list')
                       for (final event in events)
                         Card(
                           child: ListTile(
@@ -465,7 +569,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               ),
             TextButton(
               onPressed: busy ? null : () => load(reset: true),
-              child: const Text('Оновити розклад'),
+              child: Text(isSchedule ? 'Оновити розклад' : 'Оновити календар'),
             ),
           ],
         ],
@@ -475,9 +579,15 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
 }
 
 class _MonthGrid extends StatelessWidget {
-  const _MonthGrid({required this.month, required this.events});
+  const _MonthGrid({
+    required this.month,
+    required this.events,
+    required this.pagePath,
+  });
   final DateTime month;
   final List<PublicEvent> events;
+  final String pagePath;
+
   @override
   Widget build(BuildContext context) {
     final offset = month.weekday - 1;
@@ -541,7 +651,7 @@ class _MonthGrid extends StatelessWidget {
                     InkWell(
                       onTap: () => context.go(
                         Uri(
-                          path: '/calendar',
+                          path: pagePath,
                           queryParameters: {
                             ...GoRouterState.of(context).uri.queryParameters,
                             'date': DateFormat('yyyy-MM-dd')
@@ -565,28 +675,19 @@ class _MonthGrid extends StatelessWidget {
                             '${localTime(event.interval.start)} ${event.title}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color:
-                                      _isPastCalendarDay(
-                                        DateTime(month.year, month.month, day),
-                                      )
-                                      ? Theme.of(context).colorScheme.outline
-                                      : null,
-                                ),
+                            style: _calendarEventStyle(
+                              context,
+                              DateTime(month.year, month.month, day),
+                            ),
                           ),
                         ),
                       ),
                     if (todayEvents.length > 2)
                       Text(
                         '+${todayEvents.length - 2} — оберіть день',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color:
-                              _isPastCalendarDay(
-                                DateTime(month.year, month.month, day),
-                              )
-                              ? Theme.of(context).colorScheme.outline
-                              : null,
+                        style: _calendarEventStyle(
+                          context,
+                          DateTime(month.year, month.month, day),
                         ),
                       ),
                   ],
@@ -607,6 +708,25 @@ bool _isPastCalendarDay(DateTime day) {
     day.month,
     day.day,
   ).isBefore(DateTime(now.year, now.month, now.day));
+}
+
+TextStyle? _calendarEventStyle(BuildContext context, DateTime day) {
+  final past = _isPastCalendarDay(day);
+  return Theme.of(context).textTheme.labelSmall?.copyWith(
+    fontWeight: past ? FontWeight.w400 : FontWeight.w700,
+    color: past ? Theme.of(context).colorScheme.outline : null,
+  );
+}
+
+String eventWhenLabel(PublicEvent event) {
+  final startDate = localDate(event.interval.start);
+  final endDate = localDate(event.interval.end);
+  final startTime = localTime(event.interval.start);
+  final endTime = localTime(event.interval.end);
+  if (startDate == endDate) {
+    return '$startDate · $startTime–$endTime (Київ)';
+  }
+  return '$startDate · $startTime — $endDate $endTime (Київ)';
 }
 
 class _CalendarDayLabel extends StatelessWidget {
@@ -645,6 +765,7 @@ class _WeekGrid extends StatelessWidget {
   const _WeekGrid({required this.focus, required this.events});
   final DateTime focus;
   final List<PublicEvent> events;
+
   @override
   Widget build(BuildContext context) {
     final monday = DateTime(
@@ -719,11 +840,7 @@ class _WeekGrid extends StatelessWidget {
                   '${localTime(event.interval.start)} ${event.title}',
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: _isPastCalendarDay(day)
-                        ? Theme.of(context).colorScheme.outline
-                        : null,
-                  ),
+                  style: _calendarEventStyle(context, day),
                 ),
               ),
             ),
@@ -776,9 +893,7 @@ class _EventPageState extends ConsumerState<EventPage> {
           children: [
             Text(data.title, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 16),
-            Text(
-              '${localDate(data.interval.start)} · ${localTime(data.interval.start)} — ${localDate(data.interval.end)} ${localTime(data.interval.end)} (Київ)',
-            ),
+            Text(eventWhenLabel(data)),
             Text('${data.roomNameSnapshot} · ${data.locationSnapshot}'),
             if (data.responsibleName.isNotEmpty)
               Text('Відповідальний: ${data.responsibleName}'),
@@ -798,7 +913,7 @@ class _EventPageState extends ConsumerState<EventPage> {
               ),
             TextButton(
               onPressed: () => context.go('/'),
-              child: const Text('До розкладу'),
+              child: const Text('До календаря'),
             ),
           ],
         );
@@ -817,7 +932,6 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
   List<Room> rooms = [];
   PageCursor? next;
   Object? error;
-  final Set<String> selectedDirections = {};
   bool busy = true;
   @override
   void initState() {
@@ -885,8 +999,8 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
                   TextButton(
                     onPressed: () => context.go(
                       Uri(
-                        path: '/',
-                        queryParameters: {'room': room.id, 'view': 'week'},
+                        path: '/bookings/new',
+                        queryParameters: {'room': room.id},
                       ).toString(),
                     ),
                     child: const Text('Забронювати'),

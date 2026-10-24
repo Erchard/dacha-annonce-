@@ -12,25 +12,26 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'widget_test.dart' show EmptyRepository;
 
-PublicEvent sample(String id, int hour) => PublicEvent(
-  id: id,
-  title: 'Зустріч $id',
-  description: 'Опис',
-  roomId: 'room',
-  roomNameSnapshot: 'Мала вітальня',
-  locationSnapshot: 'Дача',
-  responsibleName: 'Відповідальна особа',
-  contactPhone: '+380 00 000 00 00',
-  notes: 'Взяти смаколики до чаю та блокнот для нотаток',
-  directions: ['Культура', 'Для дітей'],
-  interval: BookingInterval(
-    DateTime.utc(2026, 10, 20, hour),
-    DateTime.utc(2026, 10, 20, hour + 1),
-  ),
-  bookingVersion: 1,
-  publishedAt: DateTime.utc(2026),
-  updatedAt: DateTime.utc(2026),
-);
+PublicEvent sample(String id, int hour, {String phone = '+380 00 000 00 00'}) =>
+    PublicEvent(
+      id: id,
+      title: 'Зустріч $id',
+      description: 'Опис',
+      roomId: 'room',
+      roomNameSnapshot: 'Мала вітальня',
+      locationSnapshot: 'Дача',
+      responsibleName: 'Відповідальна особа',
+      contactPhone: phone,
+      notes: 'Взяти смаколики до чаю та блокнот для нотаток',
+      directions: ['Культура', 'Для дітей'],
+      interval: BookingInterval(
+        DateTime.utc(2026, 10, 20, hour),
+        DateTime.utc(2026, 10, 20, hour + 1),
+      ),
+      bookingVersion: 1,
+      publishedAt: DateTime.utc(2026),
+      updatedAt: DateTime.utc(2026),
+    );
 
 class ScheduleRepository extends EmptyRepository {
   DateTime? from, to;
@@ -79,12 +80,13 @@ void main() {
       );
     }
   });
+
   for (final width in [1200.0, 320.0]) {
     testWidgets(
-      'schedule renders real columns and switches periods at $width',
+      'schedule poster shows columns, brand header and day/week at $width',
       (tester) async {
         TimeZoneService();
-        tester.view.physicalSize = Size(width, 1100);
+        tester.view.physicalSize = Size(width, 1400);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
@@ -105,11 +107,16 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
+        expect(find.text('Тиждень на Дачі'), findsOneWidget);
         expect(find.textContaining('Взяти смаколики'), findsNWidgets(2));
         expect(find.text('+380 00 000 00 00'), findsNWidgets(2));
-        if (width > 760) {
-          expect(find.text('Відповідальний\nі телефон'), findsOneWidget);
-          expect(find.byType(Table), findsNWidgets(2));
+        expect(find.text('Місяць'), findsOneWidget);
+        expect(find.text('Події за напрямками'), findsOneWidget);
+        expect(find.text('Усі напрямки'), findsOneWidget);
+        if (width > 720) {
+          expect(find.textContaining('Відповідальний'), findsWidgets);
+          expect(find.text('Примітки'), findsOneWidget);
+          expect(find.text('Назва події'), findsOneWidget);
         }
         expect(
           tester.getTopLeft(find.text('Зустріч перша')).dy,
@@ -121,19 +128,17 @@ void main() {
         await tester.ensureVisible(find.text('День'));
         await tester.tap(find.text('День'));
         await tester.pumpAndSettle();
+        expect(find.text('Зустрічаємося на Дачі'), findsOneWidget);
+        expect(find.textContaining('2 події'), findsOneWidget);
         expect(zone.toKyiv(repo.from!).day, 20);
         expect(zone.toKyiv(repo.to!).day, 21);
+        await tester.ensureVisible(find.text('Місяць'));
         await tester.tap(find.text('Місяць'));
         await tester.pumpAndSettle();
+        expect(find.text('Місяць на Дачі'), findsOneWidget);
         expect(zone.toKyiv(repo.from!).day, 1);
+        expect(zone.toKyiv(repo.to!).day, 1);
         expect(zone.toKyiv(repo.to!).month, 11);
-        await tester.ensureVisible(find.text('Напрямки: усі'));
-        await tester.tap(find.text('Напрямки: усі'));
-        await tester.pumpAndSettle();
-        await tester.ensureVisible(find.widgetWithText(FilterChip, 'Культура'));
-        await tester.tap(find.widgetWithText(FilterChip, 'Культура'));
-        await tester.pumpAndSettle();
-        expect(repo.filters, ['Культура']);
         await tester.ensureVisible(find.text('Сьогодні'));
         await tester.tap(find.text('Сьогодні'));
         await tester.pumpAndSettle();
@@ -145,4 +150,93 @@ void main() {
       },
     );
   }
+
+  testWidgets('home shows month calendar grid', (tester) async {
+    TimeZoneService();
+    tester.view.physicalSize = const Size(1200, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final router = createRouter(initialLocation: '/');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          repositoryProvider.overrideWithValue(ScheduleRepository()),
+          sessionProvider.overrideWith((ref) => Stream.value(null)),
+          profileProvider.overrideWith((ref) => Stream.value(null)),
+        ],
+        child: DachaApp(router: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, '/');
+    expect(find.text('Зустрічі, події та спільні справи. Час — Київ.'), findsOneWidget);
+    expect(find.text('Тиждень на Дачі'), findsNothing);
+    expect(find.text('Пн'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Календар'), findsWidgets);
+    expect(find.widgetWithText(TextButton, 'Розклад'), findsWidgets);
+  });
+
+  testWidgets('/calendar shows week grid', (tester) async {
+    TimeZoneService();
+    tester.view.physicalSize = const Size(1200, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final router = createRouter(initialLocation: '/calendar?view=week');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          repositoryProvider.overrideWithValue(ScheduleRepository()),
+          sessionProvider.overrideWith((ref) => Stream.value(null)),
+          profileProvider.overrideWith((ref) => Stream.value(null)),
+        ],
+        child: DachaApp(router: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, '/calendar');
+    expect(find.text('Тиждень на Дачі'), findsNothing);
+    expect(find.text('Зустрічі, події та спільні справи. Час — Київ.'), findsOneWidget);
+  });
+
+  testWidgets('schedule shows contact fallback without phone', (tester) async {
+    TimeZoneService();
+    tester.view.physicalSize = const Size(1200, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final router = createRouter(
+      initialLocation: '/schedule?date=2026-10-20&view=day',
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          repositoryProvider.overrideWithValue(
+            _NoPhoneRepository(),
+          ),
+          sessionProvider.overrideWith((ref) => Stream.value(null)),
+          profileProvider.overrideWith((ref) => Stream.value(null)),
+        ],
+        child: DachaApp(router: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Контакт уточнюється'), findsOneWidget);
+  });
+}
+
+class _NoPhoneRepository extends EmptyRepository {
+  @override
+  Future<paging.Page<PublicEvent>> listRange(
+    DateTime start,
+    DateTime end,
+    paging.PageRequest page, {
+    String? roomId,
+    List<String> directions = const [],
+  }) async =>
+      paging.Page([sample('alone', 10, phone: '')], null);
 }

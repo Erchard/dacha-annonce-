@@ -168,10 +168,12 @@ class BookingFormPage extends ConsumerStatefulWidget {
     this.id,
     this.approved = false,
     this.initialRoomId,
+    this.editSeries = false,
   });
   final String? id;
   final bool approved;
   final String? initialRoomId;
+  final bool editSeries;
   @override
   ConsumerState<BookingFormPage> createState() => _BookingFormPageState();
 }
@@ -398,6 +400,106 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
     );
   }
 
+  Future<BookingInterval?> intervalOnDay(DateTime day) async {
+    final first = await instant(day, start.text);
+    if (first == null) return null;
+    final nextDay = end.text.compareTo(start.text) <= 0
+        ? DateTime(day.year, day.month, day.day + 1)
+        : day;
+    final last = await instant(nextDay, end.text);
+    if (last == null) return null;
+    return BookingInterval(first, last);
+  }
+
+  Future<void> submitSeries() async {
+    final service = ref.read(bookingServiceProvider);
+    final occurrences = await service.seriesOccurrences(id);
+    final zone = TimeZoneService();
+    final nowKyiv = zone.toKyiv(DateTime.now());
+    final today = DateTime(nowKyiv.year, nowKyiv.month, nowKyiv.day);
+    final nowUtc = DateTime.now().toUtc();
+    final targets = occurrences.where((booking) {
+      if (booking.status != BookingStatus.pending &&
+          booking.status != BookingStatus.approved) {
+        return false;
+      }
+      final local = zone.toKyiv(booking.draft.interval.start);
+      final day = DateTime(local.year, local.month, local.day);
+      return !day.isBefore(today);
+    }).toList();
+    if (targets.isEmpty) {
+      setState(
+        () => message =
+            'У серії немає сьогоднішніх або майбутніх подій для редагування.',
+      );
+      return;
+    }
+    if (!mounted) return;
+    if (!await confirmAction(
+      context,
+      'Редагувати всю серію?',
+      'Буде оновлено подій: ${targets.length} (сьогодні й майбутні цієї серії). Минулі входження не змінюються.',
+    )) {
+      return;
+    }
+    var completed = 0;
+    try {
+      for (final booking in targets) {
+        final local = zone.toKyiv(booking.draft.interval.start);
+        final day = DateTime(local.year, local.month, local.day);
+        var interval = await intervalOnDay(day);
+        if (interval == null) return;
+        final roomOrTimeChanged =
+            roomId != booking.draft.roomId ||
+            interval.start != booking.draft.interval.start ||
+            interval.end != booking.draft.interval.end;
+        BookingAction action;
+        if (booking.status == BookingStatus.approved && roomOrTimeChanged) {
+          if (!interval.start.isAfter(nowUtc)) {
+            // Started today: keep original slot, update only text fields.
+            interval = booking.draft.interval;
+            action = BookingAction.edit;
+          } else {
+            action = BookingAction.reschedule;
+          }
+        } else {
+          action = BookingAction.edit;
+        }
+        final draft = BookingDraft(
+          roomId: action == BookingAction.edit &&
+                  booking.status == BookingStatus.approved &&
+                  roomOrTimeChanged &&
+                  !booking.draft.interval.start.isAfter(nowUtc)
+              ? booking.draft.roomId
+              : roomId!,
+          title: title.text,
+          description: description.text,
+          responsibleName: responsible.text,
+          contactPhone: contactPhone.text,
+          notes: notes.text,
+          directions: directions,
+          interval: interval,
+        );
+        await service.execute(
+          booking.id,
+          action,
+          expectedVersion: booking.version,
+          draft: draft,
+        );
+        completed++;
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => message =
+              'Оновлено $completed із ${targets.length}. ${errorMessage(error)} Натисніть «Зберегти» ще раз для решти.',
+        );
+      }
+      return;
+    }
+    if (mounted) context.go('/bookings/$id');
+  }
+
   Future<void> submit() async {
     if (!form.currentState!.validate()) return;
     setState(() {
@@ -405,6 +507,10 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
       message = null;
     });
     try {
+      if (widget.editSeries && original != null) {
+        await submitSeries();
+        return;
+      }
       final day = civilDate();
       if (day == null) {
         setState(() => message = 'Перевірте дату.');
@@ -416,14 +522,10 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
         );
         return;
       }
-      final first = await instant(day, start.text);
-      if (first == null) return;
-      // An end time earlier than or equal to the start denotes the next calendar day.
-      final nextDay = end.text.compareTo(start.text) <= 0
-          ? DateTime(day.year, day.month, day.day + 1)
-          : day;
-      final last = await instant(nextDay, end.text);
-      if (last == null) return;
+      final interval = await intervalOnDay(day);
+      if (interval == null) return;
+      final first = interval.start;
+      final last = interval.end;
       final draft = BookingDraft(
         roomId: roomId!,
         title: title.text,
@@ -432,7 +534,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
         contactPhone: contactPhone.text,
         notes: notes.text,
         directions: directions,
-        interval: BookingInterval(first, last),
+        interval: interval,
       );
       if (weekly &&
           (widget.approved ||
@@ -659,12 +761,14 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
       }
     }
     if (mounted) {
+      final day = ready.first.day;
       context.go(
         Uri(
-          path: '/',
+          path: '/schedule',
           queryParameters: {
-            'date': ready.first.label,
-            'view': 'list',
+            'date':
+                '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+            'view': 'week',
             'room': draft.roomId,
           },
         ).toString(),
@@ -694,7 +798,9 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
       );
     }
     return AppFrame(
-      title: original != null
+      title: widget.editSeries
+          ? 'Редагувати всю серію'
+          : original != null
           ? 'Редагувати заявку'
           : (widget.approved ||
                 ref.read(profileProvider).asData?.value?.canPublish == true)
@@ -711,8 +817,10 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Назва, опис і відповідальний будуть публічними після схвалення. Не додавайте контакти або конфіденційні відомості.',
+                  Text(
+                    widget.editSeries
+                        ? 'Зміни застосуються до сьогоднішніх і майбутніх входжень цієї серії. Дата кожного входження зберігається; час доби, локація, текст і напрямки — з форми нижче. Минулі входження не змінюються.'
+                        : 'Назва, опис і відповідальний будуть публічними після схвалення. Не додавайте контакти або конфіденційні відомості.',
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -965,6 +1073,8 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                     child: Text(
                       busy
                           ? 'Зберігаємо…'
+                          : widget.editSeries
+                          ? 'Зберегти для серії'
                           : original == null
                           ? 'Надіслати'
                           : 'Зберегти зміни',
@@ -1144,6 +1254,15 @@ class _BookingDetailPageState extends ConsumerState<BookingDetailPage> {
                       onPressed: () =>
                           context.go('/bookings/${booking.id}/edit'),
                       child: const Text('Редагувати'),
+                    ),
+                  if (active &&
+                      (admin || publisher) &&
+                      BookingService.seriesPrefix(booking.id) != null)
+                    OutlinedButton(
+                      onPressed: () => context.go(
+                        '/bookings/${booking.id}/edit?series=1',
+                      ),
+                      child: const Text('Редагувати всю серію'),
                     ),
                   if (active &&
                       (admin ||

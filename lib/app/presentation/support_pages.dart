@@ -578,19 +578,97 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                       : () => act((r, t) => r.comment(t, comment.text)),
                   child: const Text('Додати коментар'),
                 ),
+                if (role == 'admin' && t.status == 'new')
+                  OutlinedButton(
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            final titleCtrl = TextEditingController(
+                              text: t.title,
+                            );
+                            final bodyCtrl = TextEditingController(text: t.body);
+                            final saved = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Редагувати звернення'),
+                                content: SizedBox(
+                                  width: 480,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      TextField(
+                                        controller: titleCtrl,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Тема',
+                                        ),
+                                        maxLength: 160,
+                                      ),
+                                      TextField(
+                                        controller: bodyCtrl,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Опис',
+                                        ),
+                                        minLines: 4,
+                                        maxLines: 10,
+                                        maxLength: 10000,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Скасувати'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Зберегти'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (saved == true) {
+                              await act(
+                                (r, ticket) => r.editContent(
+                                  ticket,
+                                  title: titleCtrl.text,
+                                  body: bodyCtrl.text,
+                                ),
+                              );
+                            }
+                            titleCtrl.dispose();
+                            bodyCtrl.dispose();
+                          },
+                    child: const Text('Редагувати'),
+                  ),
                 for (final status in allowedTicketStatuses(role, t.status))
                   OutlinedButton(
                     onPressed: busy
                         ? null
                         : () async {
+                            final withdrawing =
+                                role == 'admin' &&
+                                t.status == 'new' &&
+                                status == 'closed';
+                            final reopening = status == 'accepted' &&
+                                ['done', 'rejected', 'closed']
+                                    .contains(t.status);
                             if (await confirmAction(
                               context,
-                              'Змінити статус?',
-                              ticketStatusLabel(status),
+                              withdrawing
+                                  ? 'Видалити звернення?'
+                                  : reopening
+                                  ? 'Відкрити повторно?'
+                                  : 'Змінити статус?',
+                              withdrawing
+                                  ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок.'
+                                  : ticketStatusLabel(status),
                             )) {
                               await act(
-                                (r, t) => r.status(
-                                  t,
+                                (r, ticket) => r.status(
+                                  ticket,
                                   status,
                                   comment: comment.text.trim().isEmpty
                                       ? null
@@ -599,7 +677,17 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                               );
                             }
                           },
-                    child: Text(ticketStatusLabel(status)),
+                    child: Text(
+                      role == 'admin' &&
+                              t.status == 'new' &&
+                              status == 'closed'
+                          ? 'Видалити'
+                          : status == 'accepted' &&
+                                ['done', 'rejected', 'closed']
+                                    .contains(t.status)
+                          ? 'Відкрити повторно'
+                          : ticketStatusLabel(status),
+                    ),
                   ),
                 if (role == 'developer')
                   DropdownButton<String>(

@@ -1,15 +1,170 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/time/time_zone_service.dart';
 import '../../features/calendar/domain/public_event.dart';
 import 'shared.dart';
 
+const scheduleCream = Color(0xfff5f5f0);
+const scheduleInk = Color(0xff2f2f2a);
+const scheduleMuted = Color(0xff6b6b63);
+const scheduleGreen = Color(0xff315343);
+const scheduleHeaderGreen = Color(0xff315343);
+
+const scheduleDayColors = [
+  Color(0xffe9efdf),
+  Color(0xfff5ebce),
+  Color(0xffe1edf1),
+  Color(0xffeee4f0),
+  Color(0xfff3e4da),
+  Color(0xffe1eee7),
+  Color(0xffece9dc),
+];
+
+TextStyle scheduleSerif({
+  double size = 28,
+  FontWeight weight = FontWeight.w600,
+  Color color = scheduleInk,
+}) => GoogleFonts.sourceSerif4(
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+  height: 1.2,
+);
+
+class ScheduleBrandHeader extends StatelessWidget {
+  const ScheduleBrandHeader({
+    super.key,
+    required this.view,
+    required this.focus,
+    this.roomLabel,
+  });
+  final String view;
+  final DateTime focus;
+  final String? roomLabel;
+
+  Widget _roomLine() {
+    final label = roomLabel?.trim();
+    if (label == null || label.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'Локація: $label',
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: scheduleGreen,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (view == 'day') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ГРОМАДСЬКИЙ ПРОСТІР «ДАЧА» · БОЯРКА',
+            style: TextStyle(
+              fontSize: 12,
+              letterSpacing: 1.2,
+              color: scheduleMuted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            roomLabel == null ? 'Зустрічаємося на Дачі' : 'Розклад локації',
+            style: scheduleSerif(size: 34),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Розклад подій · ${DateFormat('LLLL yyyy', 'uk').format(focus)}',
+            style: const TextStyle(fontSize: 16, color: scheduleMuted),
+          ),
+          _roomLine(),
+        ],
+      );
+    }
+    if (view == 'month') {
+      final month = DateFormat('LLLL yyyy', 'uk').format(focus);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            roomLabel == null ? 'Місяць на Дачі' : 'Місяць локації',
+            style: scheduleSerif(size: 34),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${month[0].toUpperCase()}${month.substring(1)}',
+            style: const TextStyle(fontSize: 16, color: scheduleMuted),
+          ),
+          _roomLine(),
+          const SizedBox(height: 8),
+          Text(
+            roomLabel == null
+                ? 'Усі події місяця в одній таблиці — дні з кольорами тижня.'
+                : 'Лише події цієї локації за місяць.',
+            style: const TextStyle(
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+              color: scheduleMuted,
+            ),
+          ),
+        ],
+      );
+    }
+    final monday = DateTime(
+      focus.year,
+      focus.month,
+      focus.day - (focus.weekday - 1),
+    );
+    final sunday = DateTime(monday.year, monday.month, monday.day + 6);
+    final range = monday.month == sunday.month
+        ? '${DateFormat('d', 'uk').format(monday)}–${DateFormat('d MMMM yyyy', 'uk').format(sunday)} року'
+        : '${DateFormat('d MMM', 'uk').format(monday)} – ${DateFormat('d MMM yyyy', 'uk').format(sunday)} року';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          roomLabel == null ? 'Тиждень на Дачі' : 'Тиждень локації',
+          style: scheduleSerif(size: 34),
+        ),
+        const SizedBox(height: 6),
+        Text(range, style: const TextStyle(fontSize: 16, color: scheduleMuted)),
+        _roomLine(),
+        const SizedBox(height: 8),
+        Text(
+          roomLabel == null
+              ? 'Кожен день тижня має свій колір у таблиці нижче.'
+              : 'Події лише цієї локації; дні з кольорами тижня.',
+          style: const TextStyle(
+            fontSize: 13,
+            fontStyle: FontStyle.italic,
+            color: scheduleMuted,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class ScheduleTable extends StatelessWidget {
-  const ScheduleTable({super.key, required this.events, required this.wide});
+  const ScheduleTable({
+    super.key,
+    required this.events,
+    required this.wide,
+    required this.view,
+  });
   final List<PublicEvent> events;
   final bool wide;
+  final String view;
+
   static const headings = [
     'Дата',
     'Час',
@@ -18,164 +173,424 @@ class ScheduleTable extends StatelessWidget {
     'Відповідальний\nі телефон',
     'Примітки',
   ];
-  static const widths = <int, TableColumnWidth>{
-    0: FlexColumnWidth(1),
-    1: FlexColumnWidth(.85),
-    2: FlexColumnWidth(1.7),
-    3: FlexColumnWidth(1.1),
-    4: FlexColumnWidth(1.4),
-    5: FlexColumnWidth(1.5),
-  };
-  static const colors = [
-    Color(0xffe9efdf),
-    Color(0xfff5ebce),
-    Color(0xffe1edf1),
-    Color(0xffeee4f0),
-    Color(0xfff3e4da),
-    Color(0xffe1eee7),
-    Color(0xffece9dc),
-  ];
-  Widget cell(Widget child) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-    child: child,
-  );
-  Widget title(BuildContext context, PublicEvent event) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      TextButton(
-        style: TextButton.styleFrom(
-          padding: EdgeInsets.zero,
-          alignment: Alignment.centerLeft,
-        ),
-        onPressed: () => context.go('/events/${Uri.encodeComponent(event.id)}'),
-        child: Text(
-          event.title,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-      ),
-      if (event.directions.isNotEmpty)
-        Text(
-          event.directions.join(' · '),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-    ],
-  );
-  Widget contact(PublicEvent event) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(event.responsibleName.isEmpty ? '—' : event.responsibleName),
-      if (event.contactPhone.isNotEmpty) ...[
-        const SizedBox(height: 6),
-        SelectableText(event.contactPhone),
-      ],
-    ],
-  );
-  String time(PublicEvent event) =>
-      '${localTime(event.interval.start)}–${localTime(event.interval.end)}${localDate(event.interval.start) == localDate(event.interval.end) ? '' : ' (${localDate(event.interval.end)})'}';
-  @override
-  Widget build(BuildContext context) {
+
+  Map<DateTime, List<PublicEvent>> groups() {
     final zone = TimeZoneService();
     final ordered = [...events]
       ..sort((a, b) {
         final byTime = a.interval.start.compareTo(b.interval.start);
         return byTime == 0 ? a.id.compareTo(b.id) : byTime;
       });
-    final groups = <DateTime, List<PublicEvent>>{};
+    final result = <DateTime, List<PublicEvent>>{};
     for (final event in ordered) {
       final local = zone.toKyiv(event.interval.start);
       final day = DateTime(local.year, local.month, local.day);
-      groups.putIfAbsent(day, () => []).add(event);
+      result.putIfAbsent(day, () => []).add(event);
     }
+    return result;
+  }
+
+  String timeLabel(PublicEvent event) {
+    final sameDay =
+        localDate(event.interval.start) == localDate(event.interval.end);
+    return '${localTime(event.interval.start)}–${localTime(event.interval.end)}'
+        '${sameDay ? '' : ' (${localDate(event.interval.end)})'}';
+  }
+
+  String dateCell(DateTime day) =>
+      '${DateFormat('dd.MM.yyyy', 'uk').format(day)} '
+      '${DateFormat('EEEE', 'uk').format(day)}';
+
+  String dayCountLabel(int count) {
+    final mod10 = count % 10, mod100 = count % 100;
+    if (mod10 == 1 && mod100 != 11) return '$count подія';
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return '$count події';
+    }
+    return '$count подій';
+  }
+
+  Widget eventTitle(BuildContext context, PublicEvent event) => TextButton(
+    style: TextButton.styleFrom(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      alignment: Alignment.centerLeft,
+    ),
+    onPressed: () => context.go('/events/${Uri.encodeComponent(event.id)}'),
+    child: Text(
+      event.title,
+      style: scheduleSerif(size: 18, color: scheduleGreen),
+    ),
+  );
+
+  int columnFlex(String heading) {
+    if (heading.startsWith('Назва')) return 15;
+    if (heading.startsWith('Відповідальний')) return 14;
+    if (heading == 'Примітки') return 17;
+    if (heading == 'Дата') return 12;
+    if (heading == 'Час') return 9;
+    return 11;
+  }
+
+  Widget contact(PublicEvent event) {
+    final name = event.responsibleName.trim();
+    final phone = event.contactPhone.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          name.isEmpty ? '—' : name,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            color: scheduleInk,
+          ),
+        ),
+        if (name.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            phone.isEmpty ? 'Контакт уточнюється' : phone,
+            style: TextStyle(
+              fontSize: 13,
+              color: phone.isEmpty ? scheduleMuted : scheduleInk.withValues(alpha: 0.75),
+            ),
+          ),
+        ] else if (phone.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          SelectableText(phone, style: const TextStyle(fontSize: 13)),
+        ],
+      ],
+    );
+  }
+
+  Widget padded(Widget child) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+    child: child,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final byDay = groups();
+    if (byDay.isEmpty) return const SizedBox.shrink();
+    if (!wide) return _narrow(context, byDay);
+    return view == 'day' ? _wideDay(context, byDay) : _wideWeek(context, byDay);
+  }
+
+  Widget _headerRow() => Container(
+    color: scheduleHeaderGreen,
+    child: Row(
+      children: [
+        for (final heading in headings)
+          Expanded(
+            flex: columnFlex(heading),
+            child: padded(
+              Text(
+                heading,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  height: 1.25,
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  Widget _wideDay(
+    BuildContext context,
+    Map<DateTime, List<PublicEvent>> byDay,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (wide && events.isNotEmpty)
-          Table(
-            columnWidths: widths,
-            children: [
-              TableRow(
-                decoration: const BoxDecoration(color: Color(0xff315343)),
-                children: [
-                  for (final heading in headings)
-                    cell(
-                      Text(
-                        heading,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        for (final entry in groups.entries) ...[
+        for (final entry in byDay.entries) ...[
           Container(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(top: 12),
+            margin: const EdgeInsets.only(top: 8, bottom: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: colors[entry.key.weekday - 1],
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(8),
-              ),
+              color: scheduleDayColors[entry.key.weekday - 1],
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(
-              DateFormat('d MMMM · EEEE', 'uk').format(entry.key),
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-          if (wide)
-            Table(
-              columnWidths: widths,
-              defaultVerticalAlignment: TableCellVerticalAlignment.top,
-              border: const TableBorder(
-                horizontalInside: BorderSide(color: Color(0xffe0e5dd)),
-              ),
+            child: Row(
               children: [
-                for (final event in entry.value)
-                  TableRow(
-                    children: [
-                      cell(Text(localDate(event.interval.start))),
-                      cell(
-                        Text(
-                          time(event),
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      cell(title(context, event)),
-                      cell(Text(event.roomNameSnapshot)),
-                      cell(contact(event)),
-                      cell(Text(event.notes.isEmpty ? '—' : event.notes)),
-                    ],
-                  ),
-              ],
-            )
-          else
-            for (final event in entry.value)
-              Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        time(event),
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      title(context, event),
-                      Text(event.roomNameSnapshot),
-                      const SizedBox(height: 8),
-                      contact(event),
-                      if (event.notes.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(event.notes),
-                      ],
-                    ],
+                Expanded(
+                  child: Text(
+                    DateFormat('d MMMM · EEEE', 'uk').format(entry.key),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: scheduleInk,
+                    ),
                   ),
                 ),
+                Text(
+                  dayCountLabel(entry.value.length),
+                  style: const TextStyle(color: scheduleMuted, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 900),
+              child: SizedBox(
+                width: MediaQuery.sizeOf(context).width.clamp(900, 1100),
+                child: Column(
+                  children: [
+                    _headerRow(),
+                    for (var i = 0; i < entry.value.length; i++)
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: const Color(0xffe0e5dd),
+                              width: i == entry.value.length - 1 ? 0 : 1,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 12,
+                              child: padded(Text(dateCell(entry.key))),
+                            ),
+                            Expanded(
+                              flex: 9,
+                              child: padded(
+                                Text(
+                                  timeLabel(entry.value[i]),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 15,
+                              child: padded(eventTitle(context, entry.value[i])),
+                            ),
+                            Expanded(
+                              flex: 11,
+                              child: padded(
+                                Text(entry.value[i].roomNameSnapshot),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 14,
+                              child: padded(contact(entry.value[i])),
+                            ),
+                            Expanded(
+                              flex: 17,
+                              child: padded(
+                                Text(
+                                  entry.value[i].notes.isEmpty
+                                      ? '—'
+                                      : entry.value[i].notes,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
               ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _wideWeek(
+    BuildContext context,
+    Map<DateTime, List<PublicEvent>> byDay,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 900),
+            child: SizedBox(
+              width: MediaQuery.sizeOf(context).width.clamp(900, 1100),
+              child: Column(
+                children: [
+                  _headerRow(),
+                  for (final entry in byDay.entries) ...[
+                    const SizedBox(height: 10),
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Container(
+                            width: 118,
+                            padding: const EdgeInsets.fromLTRB(12, 14, 8, 14),
+                            color: scheduleDayColors[entry.key.weekday - 1],
+                            child: Text(
+                              dateCell(entry.key),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Container(
+                              color: scheduleDayColors[entry.key.weekday - 1]
+                                  .withValues(alpha: 0.55),
+                              child: Column(
+                                children: [
+                                  for (var i = 0; i < entry.value.length; i++)
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.7,
+                                            ),
+                                            width:
+                                                i == entry.value.length - 1
+                                                ? 0
+                                                : 1,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            flex: 9,
+                                            child: padded(
+                                              Text(
+                                                timeLabel(entry.value[i]),
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 15,
+                                            child: padded(
+                                              eventTitle(
+                                                context,
+                                                entry.value[i],
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 11,
+                                            child: padded(
+                                              Text(
+                                                entry.value[i].roomNameSnapshot,
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 14,
+                                            child: padded(
+                                              contact(entry.value[i]),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 17,
+                                            child: padded(
+                                              Text(
+                                                entry.value[i].notes.isEmpty
+                                                    ? '—'
+                                                    : entry.value[i].notes,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _narrow(
+    BuildContext context,
+    Map<DateTime, List<PublicEvent>> byDay,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final entry in byDay.entries) ...[
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheduleDayColors[entry.key.weekday - 1],
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    DateFormat('d MMMM · EEEE', 'uk').format(entry.key),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(
+                  dayCountLabel(entry.value.length),
+                  style: const TextStyle(fontSize: 12, color: scheduleMuted),
+                ),
+              ],
+            ),
+          ),
+          for (final event in entry.value)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              decoration: BoxDecoration(
+                color: scheduleDayColors[entry.key.weekday - 1].withValues(
+                  alpha: 0.45,
+                ),
+                border: const Border(
+                  bottom: BorderSide(color: Color(0xffe0e5dd)),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    timeLabel(event),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  eventTitle(context, event),
+                  const SizedBox(height: 6),
+                  Text(event.roomNameSnapshot),
+                  const SizedBox(height: 8),
+                  contact(event),
+                  if (event.notes.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(event.notes),
+                  ],
+                ],
+              ),
+            ),
         ],
       ],
     );

@@ -360,8 +360,9 @@ service cloud.firestore {
         || (b.status == 'in_progress' && n.status == 'done')
         || (b.status in ['done','rejected'] && n.status == 'closed')
         || (b.status in ['done','rejected','closed'] && n.status == 'accepted')))
-        || (admin() && ((b.status in ['done','rejected'] && n.status == 'closed')
-          || (b.status == 'done' && n.status == 'accepted')));
+        || (admin() && ((b.status == 'new' && n.status == 'closed')
+          || (b.status in ['done','rejected'] && n.status == 'closed')
+          || (b.status in ['done','rejected','closed'] && n.status == 'accepted')));
     }
     function ticketHistory(b,n,commentId) {
       return {'version':n.version,'action':n.lastAction,'actorId':request.auth.uid,'actorRole':role(),'at':request.time,
@@ -377,12 +378,15 @@ service cloud.firestore {
     function ticketUpdate(b,n) {
       let commented = n.lastCommentId != b.lastCommentId && n.lastCommentId != null;
       return n.version == b.version + 1
-        && n.diff(b).affectedKeys().hasOnly(['status','priority','updatedBy','updatedAt','lastActivityAt','version','lastAction','lastHistoryId','lastCommentId'])
-        && ((n.lastAction == 'commented' && commented && n.status == b.status && n.priority == b.priority)
-          || (n.lastAction == 'priority_changed' && role() == 'developer' && n.priority != b.priority && n.status == b.status && !commented && n.lastCommentId == b.lastCommentId)
-          || (n.lastAction == 'status_changed' && n.priority == b.priority && ticketTransition(b,n)
-            && (n.lastCommentId == b.lastCommentId || commented)
-            && (!(n.status == 'accepted' && b.status in ['done','rejected','closed']) || commented)));
+        && ((n.lastAction == 'edited' && admin() && b.status == 'new' && n.status == 'new' && n.priority == b.priority
+            && n.diff(b).affectedKeys().hasOnly(['title','body','updatedBy','updatedAt','lastActivityAt','version','lastAction','lastHistoryId'])
+            && n.lastCommentId == b.lastCommentId && (n.title != b.title || n.body != b.body))
+          || (n.diff(b).affectedKeys().hasOnly(['status','priority','updatedBy','updatedAt','lastActivityAt','version','lastAction','lastHistoryId','lastCommentId'])
+            && ((n.lastAction == 'commented' && commented && n.status == b.status && n.priority == b.priority)
+              || (n.lastAction == 'priority_changed' && role() == 'developer' && n.priority != b.priority && n.status == b.status && !commented && n.lastCommentId == b.lastCommentId)
+              || (n.lastAction == 'status_changed' && n.priority == b.priority && ticketTransition(b,n)
+                && (n.lastCommentId == b.lastCommentId || commented)
+                && (!(n.status == 'accepted' && b.status in ['done','rejected','closed']) || commented)))));
     }
     match /supportTickets/{ticketId} {
       allow get: if supportStaff();

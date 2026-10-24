@@ -86,7 +86,9 @@ void main() {
 
   testWidgets('Public calendar renders an honest empty state', (tester) async {
     await open(tester, '/');
-    expect(find.text('Розклад'), findsOneWidget);
+    expect(find.text('Зустрічі, події та спільні справи. Час — Київ.'), findsOneWidget);
+    expect(find.text('Календар'), findsWidgets);
+    expect(find.text('Тиждень на Дачі'), findsNothing);
     expect(tester.takeException(), isNull);
   });
   testWidgets('Unknown deep link can return to calendar', (tester) async {
@@ -94,7 +96,7 @@ void main() {
     expect(find.text('Сторінку не знайдено'), findsOneWidget);
     await tester.tap(find.text('На головну'));
     await tester.pumpAndSettle();
-    expect(find.text('Розклад'), findsOneWidget);
+    expect(find.text('Зустрічі, події та спільні справи. Час — Київ.'), findsOneWidget);
   });
   testWidgets(
     'Private deep link requires sign-in without reading private data',

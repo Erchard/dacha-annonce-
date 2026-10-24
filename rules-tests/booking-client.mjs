@@ -60,7 +60,7 @@ export async function execute(db,actor,id,action,{expectedVersion=0,draft={},rea
    oldStartAt:b?.startAt??null,oldEndAt:b?.endAt??null,newStartAt:n.startAt,newEndAt:n.endAt}});
   if(n.status==='approved') {
    const data=Object.fromEntries(['title','description','roomId','roomNameSnapshot','locationSnapshot','responsibleName','startAt','endAt','timeZone'].map(k=>[k,n[k]]));
-   for(const key of ['contactPhone','notes','directions']) if(key in n) data[key]=n[key];
+   for(const key of ['contactPhone','notes','directions','coverImageBytes','coverImageContentType','coverImageFileName']) if(key in n) data[key]=n[key];
    Object.assign(data,{bookingVersion:n.version,publishedAt:previousPublic?.publishedAt??now,updatedAt:now,schemaVersion:1});
    plan.push({path:`publicEvents/${id}`,data});
   } else if(previousPublic) plan.push({path:`publicEvents/${id}`,delete:true});

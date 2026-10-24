@@ -25,6 +25,7 @@ class BookingDraft {
     String contactPhone = '',
     String notes = '',
     List<String> directions = const [],
+    this.coverImage,
     required this.interval,
   }) : contactPhone = checkedContactPhone(contactPhone),
        notes = checkedText(notes.trim(), 'notes', 0, 500),
@@ -43,6 +44,7 @@ class BookingDraft {
   }
   final String roomId, title, description, responsibleName, contactPhone, notes;
   final List<String> directions;
+  final CoverImage? coverImage;
   final BookingInterval interval;
 }
 

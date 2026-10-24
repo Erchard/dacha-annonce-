@@ -60,6 +60,9 @@ void main() {
       'contactPhone': '',
       'notes': '',
       'directions': <String>[],
+      'coverImageBytes': null,
+      'coverImageContentType': null,
+      'coverImageFileName': null,
     });
     expect(RoomDto.decode('room', room).createdAt.isUtc, isTrue);
   });

@@ -187,6 +187,7 @@ class BookingService {
           'contactPhone': selected.contactPhone,
           'notes': selected.notes,
           'directions': selected.directions,
+          ...BookingDto.coverFields(selected.coverImage),
           'startAt': Timestamp.fromDate(selected.interval.start),
           'endAt': Timestamp.fromDate(selected.interval.end),
         },
@@ -346,6 +347,9 @@ class BookingService {
           'contactPhone': next['contactPhone'] ?? '',
           'notes': next['notes'] ?? '',
           'directions': next['directions'] ?? <String>[],
+          'coverImageBytes': next['coverImageBytes'],
+          'coverImageContentType': next['coverImageContentType'],
+          'coverImageFileName': next['coverImageFileName'],
           'bookingVersion': expectedVersion + 1,
           'publishedAt': previousPublic == null
               ? now

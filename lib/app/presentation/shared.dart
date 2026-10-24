@@ -6,9 +6,19 @@ import 'package:intl/intl.dart';
 
 import '../../core/errors/domain_exception.dart';
 import '../../core/time/time_zone_service.dart';
+import '../../core/widgets/app_link.dart';
+import '../../core/widgets/install_banner.dart';
 import '../../features/auth/domain/user_profile.dart';
 import '../../features/bookings/domain/booking.dart';
 import '../providers.dart';
+
+Widget _navBadge({required int count, required Widget child}) {
+  if (count <= 0) return child;
+  return Badge(
+    label: Text(count > 9 ? '9+' : '$count'),
+    child: child,
+  );
+}
 
 String errorMessage(Object error) {
   if (error is DomainException) {
@@ -80,17 +90,140 @@ class AppFrame extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider).asData?.value;
     final profile = ref.watch(profileProvider).asData?.value;
+    final pendingCount =
+        ref.watch(pendingBookingsCountProvider).asData?.value ?? 0;
+    final openTickets =
+        ref.watch(openTicketsCountProvider).asData?.value ?? 0;
+    final narrow = MediaQuery.sizeOf(context).width < 720;
+    final location = GoRouterState.of(context).uri.path;
+    final bookingPath = profile?.role == UserRole.admin
+        ? '/admin/events/new'
+        : '/bookings/new';
+    final showFab =
+        narrow && profile?.role != UserRole.developer && profile != null
+            ? !profile.isDisabled
+            : narrow && profile == null;
+
+    Widget topNav() => Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            const AppLink(to: '/', child: Text('Календар')),
+            const AppLink(to: '/schedule', child: Text('Розклад')),
+            const AppLink(to: '/rooms', child: Text('Локації')),
+            if (profile?.role != UserRole.developer)
+              AppLink(to: bookingPath, child: const Text('Подати заявку')),
+            const AppLink(
+              to: '/feedback',
+              child: Text('Зауваження та пропозиції'),
+            ),
+            if (profile?.role == UserRole.admin && !profile!.isDisabled) ...[
+              _navBadge(
+                count: pendingCount,
+                child: const AppLink(
+                  to: '/admin',
+                  outlined: true,
+                  icon: Icon(Icons.edit_calendar),
+                  child: Text('Керувати подіями'),
+                ),
+              ),
+              const AppLink(
+                to: '/admin/users',
+                outlined: true,
+                child: Text('Користувачі'),
+              ),
+              _navBadge(
+                count: openTickets,
+                child: const AppLink(
+                  to: '/support',
+                  outlined: true,
+                  child: Text('Звернення'),
+                ),
+              ),
+            ] else if (profile != null &&
+                !profile.isDisabled &&
+                profile.role == UserRole.organizer)
+              const AppLink(
+                to: '/my-bookings',
+                outlined: true,
+                icon: Icon(Icons.edit_calendar),
+                child: Text('Мої події'),
+              )
+            else if (profile?.role == UserRole.developer &&
+                !profile!.isDisabled)
+              _navBadge(
+                count: openTickets,
+                child: const AppLink(
+                  to: '/support',
+                  outlined: true,
+                  child: Text('Звернення'),
+                ),
+              ),
+          ],
+        );
+
+    int bottomIndex() {
+      if (location.startsWith('/schedule')) return 1;
+      if (location.startsWith('/rooms')) return 2;
+      if (location.startsWith('/my-bookings') ||
+          location.startsWith('/admin') ||
+          location.startsWith('/support')) {
+        return 3;
+      }
+      return 0;
+    }
+
+    void goBottom(int index) {
+      switch (index) {
+        case 0:
+          context.go('/');
+        case 1:
+          context.go('/schedule');
+        case 2:
+          context.go('/rooms');
+        case 3:
+          if (profile?.role == UserRole.admin) {
+            context.go('/admin');
+          } else if (profile?.role == UserRole.developer) {
+            context.go('/support');
+          } else if (profile != null) {
+            context.go('/my-bookings');
+          } else {
+            context.go('/login');
+          }
+      }
+    }
+
     return Scaffold(
       backgroundColor: backgroundColor,
       appBar: AppBar(
-        title: TextButton(
-          onPressed: () => context.go('/'),
-          child: const Text(
-            'Дача',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.5,
+        title: InkWell(
+          onTap: () => context.go('/'),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Image.asset(
+                  'assets/brand/logo_mark.png',
+                  height: 36,
+                  width: 36,
+                  filterQuality: FilterQuality.high,
+                  semanticLabel: 'Дача',
+                ),
+                const SizedBox(width: 10),
+                const Flexible(
+                  child: Text(
+                    'Дача',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -108,9 +241,22 @@ class AppFrame extends ConsumerWidget {
         child: SafeArea(
           child: ListView(
             children: [
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('Особисте меню', style: TextStyle(fontSize: 22)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Image.asset(
+                      'assets/brand/logo_mark.png',
+                      height: 48,
+                      width: 48,
+                      filterQuality: FilterQuality.high,
+                      semanticLabel: 'Дача',
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Особисте меню', style: TextStyle(fontSize: 22)),
+                  ],
+                ),
               ),
               if (profile != null &&
                   !profile.isDisabled &&
@@ -121,7 +267,17 @@ class AppFrame extends ConsumerWidget {
                 ),
               if (profile?.role == UserRole.admin && !profile!.isDisabled) ...[
                 ListTile(
-                  title: const Text('Керувати подіями'),
+                  title: Row(
+                    children: [
+                      const Expanded(child: Text('Керувати подіями')),
+                      if (pendingCount > 0)
+                        Badge(
+                          label: Text(
+                            pendingCount > 9 ? '9+' : '$pendingCount',
+                          ),
+                        ),
+                    ],
+                  ),
                   onTap: () => context.go('/admin'),
                 ),
                 ListTile(
@@ -137,7 +293,17 @@ class AppFrame extends ConsumerWidget {
                   !profile.isDisabled &&
                   profile.role != UserRole.organizer)
                 ListTile(
-                  title: const Text('Звернення'),
+                  title: Row(
+                    children: [
+                      const Expanded(child: Text('Звернення')),
+                      if (openTickets > 0)
+                        Badge(
+                          label: Text(
+                            openTickets > 9 ? '9+' : '$openTickets',
+                          ),
+                        ),
+                    ],
+                  ),
                   onTap: () => context.go('/support'),
                 ),
               ListTile(
@@ -166,76 +332,134 @@ class AppFrame extends ConsumerWidget {
           ),
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        TextButton(
-                          onPressed: () => context.go('/'),
-                          child: const Text('Календар'),
-                        ),
-                        TextButton(
-                          onPressed: () => context.go('/schedule'),
-                          child: const Text('Розклад'),
-                        ),
-                        TextButton(
-                          onPressed: () => context.go('/rooms'),
-                          child: const Text('Локації'),
-                        ),
-                        if (profile != null &&
-                            !profile.isDisabled &&
-                            profile.role != UserRole.developer)
-                          OutlinedButton.icon(
-                            onPressed: () => context.go(
-                              profile.role == UserRole.admin
-                                  ? '/admin'
-                                  : '/my-bookings',
-                            ),
-                            icon: const Icon(Icons.edit_calendar),
-                            label: Text(
-                              profile.role == UserRole.admin
-                                  ? 'Керувати подіями'
-                                  : 'Мої події',
-                            ),
-                          ),
-                        if (profile?.role != UserRole.developer)
-                          TextButton(
-                            onPressed: () => context.go(
-                              profile?.role == UserRole.admin
-                                  ? '/admin/events/new'
-                                  : '/bookings/new',
-                            ),
-                            child: const Text('Подати заявку'),
-                          ),
-                      ],
+      floatingActionButton: showFab
+          ? FloatingActionButton.extended(
+              onPressed: () => context.go(bookingPath),
+              icon: const Icon(Icons.add),
+              label: const Text('Подати заявку'),
+            )
+          : null,
+      bottomNavigationBar: narrow
+          ? NavigationBar(
+              selectedIndex: bottomIndex().clamp(0, 3),
+              onDestinationSelected: goBottom,
+              destinations: [
+                const NavigationDestination(
+                  icon: Icon(Icons.calendar_month_outlined),
+                  selectedIcon: Icon(Icons.calendar_month),
+                  label: 'Календар',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.view_week_outlined),
+                  selectedIcon: Icon(Icons.view_week),
+                  label: 'Розклад',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.meeting_room_outlined),
+                  selectedIcon: Icon(Icons.meeting_room),
+                  label: 'Локації',
+                ),
+                NavigationDestination(
+                  icon: _navBadge(
+                    count: profile?.role == UserRole.admin
+                        ? pendingCount
+                        : (profile?.role == UserRole.developer
+                              ? openTickets
+                              : 0),
+                    child: Icon(
+                      profile?.role == UserRole.admin
+                          ? Icons.admin_panel_settings_outlined
+                          : profile?.role == UserRole.developer
+                          ? Icons.support_agent_outlined
+                          : Icons.event_note_outlined,
                     ),
-                    const Divider(height: 24),
-                    Semantics(
-                      header: true,
-                      child: Text(
-                        title,
-                        style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  selectedIcon: Icon(
+                    profile?.role == UserRole.admin
+                        ? Icons.admin_panel_settings
+                        : profile?.role == UserRole.developer
+                        ? Icons.support_agent
+                        : Icons.event_note,
+                  ),
+                  label: profile?.role == UserRole.admin
+                      ? 'Адмін'
+                      : profile?.role == UserRole.developer
+                      ? 'Підтримка'
+                      : 'Заявки',
+                ),
+              ],
+            )
+          : null,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const InstallBanner(),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        20,
+                        20,
+                        narrow ? 88 : 20,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (!narrow) ...[
+                            topNav(),
+                            const Divider(height: 24),
+                          ],
+                          // Selection only on page content — not AppBar/nav.
+                          SelectionArea(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Semantics(
+                                  header: true,
+                                  child: Text(
+                                    title,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.headlineMedium,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                child,
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 40),
+                          const Divider(height: 24),
+                          Row(
+                            children: [
+                              Image.asset(
+                                'assets/brand/logo_mark.png',
+                                height: 40,
+                                width: 40,
+                                filterQuality: FilterQuality.high,
+                                semanticLabel: 'Дача',
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Дача',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    child,
-                    const SizedBox(height: 32),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

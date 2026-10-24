@@ -14,7 +14,21 @@ class StatusScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Дача')),
+    appBar: AppBar(
+      title: Row(
+        children: [
+          Image.asset(
+            'assets/brand/logo_mark.png',
+            height: 32,
+            width: 32,
+            filterQuality: FilterQuality.high,
+            semanticLabel: 'Дача',
+          ),
+          const SizedBox(width: 10),
+          const Text('Дача'),
+        ],
+      ),
+    ),
     body: Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -23,6 +37,14 @@ class StatusScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Image.asset(
+                'assets/brand/logo_mark.png',
+                height: 96,
+                width: 96,
+                filterQuality: FilterQuality.high,
+                semanticLabel: 'Дача',
+              ),
+              const SizedBox(height: 20),
               if (loading)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 24),

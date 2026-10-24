@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/time/time_zone_service.dart';
+import '../../core/widgets/app_link.dart';
+import '../../core/widgets/direction_chip.dart';
 import '../../features/calendar/domain/public_event.dart';
 import 'shared.dart';
 
@@ -210,14 +211,14 @@ class ScheduleTable extends StatelessWidget {
     return '$count подій';
   }
 
-  Widget eventTitle(BuildContext context, PublicEvent event) => TextButton(
+  Widget eventTitle(BuildContext context, PublicEvent event) => AppLink(
+    to: '/events/${Uri.encodeComponent(event.id)}',
     style: TextButton.styleFrom(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       alignment: Alignment.centerLeft,
     ),
-    onPressed: () => context.go('/events/${Uri.encodeComponent(event.id)}'),
     child: Text(
       event.title,
       style: scheduleSerif(size: 18, color: scheduleGreen),
@@ -231,6 +232,31 @@ class ScheduleTable extends StatelessWidget {
     if (heading == 'Дата') return 12;
     if (heading == 'Час') return 9;
     return 11;
+  }
+
+  Widget notesCell(PublicEvent event) {
+    final text = event.notes.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (text.isEmpty)
+          const Text('—', style: TextStyle(color: scheduleMuted))
+        else
+          Text(
+            text,
+            softWrap: true,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.35,
+              color: scheduleInk,
+            ),
+          ),
+        if (event.directions.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          DirectionChipWrap(directions: event.directions.take(3)),
+        ],
+      ],
+    );
   }
 
   Widget contact(PublicEvent event) {
@@ -257,7 +283,7 @@ class ScheduleTable extends StatelessWidget {
           ),
         ] else if (phone.isNotEmpty) ...[
           const SizedBox(height: 4),
-          SelectableText(phone, style: const TextStyle(fontSize: 13)),
+          Text(phone, style: const TextStyle(fontSize: 13)),
         ],
       ],
     );
@@ -385,13 +411,7 @@ class ScheduleTable extends StatelessWidget {
                             ),
                             Expanded(
                               flex: 17,
-                              child: padded(
-                                Text(
-                                  entry.value[i].notes.isEmpty
-                                      ? '—'
-                                      : entry.value[i].notes,
-                                ),
-                              ),
+                              child: padded(notesCell(entry.value[i])),
                             ),
                           ],
                         ),
@@ -502,11 +522,7 @@ class ScheduleTable extends StatelessWidget {
                                           Expanded(
                                             flex: 17,
                                             child: padded(
-                                              Text(
-                                                entry.value[i].notes.isEmpty
-                                                    ? '—'
-                                                    : entry.value[i].notes,
-                                              ),
+                                              notesCell(entry.value[i]),
                                             ),
                                           ),
                                         ],
@@ -584,10 +600,17 @@ class ScheduleTable extends StatelessWidget {
                   Text(event.roomNameSnapshot),
                   const SizedBox(height: 8),
                   contact(event),
-                  if (event.notes.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(event.notes),
-                  ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Примітки / напрямки',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: scheduleMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  notesCell(event),
                 ],
               ),
             ),

@@ -136,18 +136,28 @@ service cloud.firestore {
     function future(d) { return d.startAt > request.time && d.startAt <= request.time + duration.value(180,'d'); }
     function activeRoom(d) { return getAfter(/databases/$(database)/documents/rooms/$(d.roomId)).data.isActive; }
     function sameInterval(b,n) { return b.roomId == n.roomId && b.startAt == n.startAt && b.endAt == n.endAt; }
+    function coverOk(d) {
+      let bytes = d.get('coverImageBytes', null);
+      let type = d.get('coverImageContentType', null);
+      let name = d.get('coverImageFileName', null);
+      return (bytes == null && type == null && name == null)
+        || (bytes is bytes && bytes.size() > 0 && bytes.size() <= 700000
+          && type in ['image/jpeg','image/png','image/webp']
+          && name is string && text(name,1,160));
+    }
     function validBooking(d) {
       let directions = d.get('directions',[]);
       let phone = d.get('contactPhone','');
       let start = d.startAt.toMillis();
       let end = d.endAt.toMillis();
-      return d.keys().toSet().difference(['contactPhone','notes','directions'].toSet()) == ['organizerId','roomId','title','description','responsibleName','startAt','endAt','timeZone','status',
+      return d.keys().toSet().difference(['contactPhone','notes','directions','coverImageBytes','coverImageContentType','coverImageFileName'].toSet()) == ['organizerId','roomId','title','description','responsibleName','startAt','endAt','timeZone','status',
         'roomNameSnapshot','locationSnapshot','rejectionReason','cancellationReason','reviewedAt','reviewedBy',
         'cancelledAt','cancelledBy','occupancyBlockIds','version','lastAction','createdAt','updatedAt','createdBy','updatedBy','schemaVersion'].toSet()
         && id(d.organizerId) && id(d.roomId) && text(d.title,3,120) && text(d.description,0,5000)
         && text(d.responsibleName,0,80)
         && (phone == '' || (phone is string && phone.matches('^[+0-9() .-]{5,32}$')))
         && text(d.get('notes',''),0,500)
+        && coverOk(d)
         && directions is list && directions.size() <= 15
         && directions.toSet().size() == directions.size()
         && directions.hasOnly(['Емоційна підтримка','Екологія','Культура','Громадська активність','Освіта, просвіта','Толока','Благоустрій Дачі','Психологічна допомога','Майстер-клас','Клуб','Для людей старшого віку','Для дітей','Для молоді','Творчі зустрічі','Концерт'])
@@ -189,7 +199,7 @@ service cloud.firestore {
       return n.status == 'pending'
         ? (actorRole == 'admin' || actorRole == 'organizer' && b.organizerId == request.auth.uid && request.auth.token.email_verified == true)
           && n.lastAction == 'edit' && future(n) && activeRoom(n)
-          && fields.hasOnly(['roomId','title','description','responsibleName','contactPhone','notes','directions','startAt','endAt','occupancyBlockIds','version','lastAction','updatedAt','updatedBy'])
+          && fields.hasOnly(['roomId','title','description','responsibleName','contactPhone','notes','directions','coverImageBytes','coverImageContentType','coverImageFileName','startAt','endAt','occupancyBlockIds','version','lastAction','updatedAt','updatedBy'])
         : actorRole == 'admin' && [n.reviewedAt,n.reviewedBy] == [request.time,request.auth.uid]
           && (n.status == 'rejected'
             ? n.lastAction == 'reject' && fields.hasOnly(['status','rejectionReason','reviewedAt','reviewedBy','version','lastAction','updatedAt','updatedBy'])
@@ -290,10 +300,13 @@ service cloud.firestore {
       let b = getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data;
       return n.schemaVersion is int && n.bookingVersion is int
         && changedBooking(beforeBooking(bookingId),b) && b.status == 'approved'
-        && n.diff(publicData(b,publishedAt)).affectedKeys().hasOnly(['contactPhone','notes','directions'])
+        && n.diff(publicData(b,publishedAt)).affectedKeys().hasOnly(['contactPhone','notes','directions','coverImageBytes','coverImageContentType','coverImageFileName'])
         && n.get('contactPhone','') == b.get('contactPhone','')
         && n.get('notes','') == b.get('notes','')
-        && n.get('directions',[]) == b.get('directions',[]);
+        && n.get('directions',[]) == b.get('directions',[])
+        && n.get('coverImageBytes', null) == b.get('coverImageBytes', null)
+        && n.get('coverImageContentType', null) == b.get('coverImageContentType', null)
+        && n.get('coverImageFileName', null) == b.get('coverImageFileName', null);
     }
     match /publicEvents/{bookingId} {
       allow get: if true;
@@ -388,21 +401,33 @@ service cloud.firestore {
                 && (n.lastCommentId == b.lastCommentId || commented)
                 && (!(n.status == 'accepted' && b.status in ['done','rejected','closed']) || commented)))));
     }
+    function feedbackAuthor() {
+      return request.auth != null && resource.data.createdBy == request.auth.uid;
+    }
+    function canCreateFeedbackTicket(ticketId) {
+      return (admin() || organizer())
+        && validTicket(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.version == 1
+        && request.resource.data.status == 'new'
+        && request.resource.data.priority == 'normal'
+        && request.resource.data.lastAction == 'created'
+        && request.resource.data.lastCommentId == null
+        && ticketLinks(ticketId,null,request.resource.data)
+        && (admin() || request.resource.data.type == 'feedback');
+    }
     match /supportTickets/{ticketId} {
-      allow get: if supportStaff();
+      allow get: if supportStaff() || feedbackAuthor();
       allow list: if supportStaff() && bounded();
-      allow create: if admin() && validTicket(request.resource.data)
-        && request.resource.data.createdBy == request.auth.uid && request.resource.data.createdAt == request.time
-        && request.resource.data.version == 1 && request.resource.data.status == 'new'
-        && request.resource.data.priority == 'normal' && request.resource.data.lastAction == 'created'
-        && request.resource.data.lastCommentId == null && ticketLinks(ticketId,null,request.resource.data);
+      allow create: if canCreateFeedbackTicket(ticketId);
       allow update: if supportStaff() && validTicket(request.resource.data)
         && ticketUpdate(resource.data,request.resource.data) && ticketLinks(ticketId,resource.data,request.resource.data);
       allow delete: if false;
       match /history/{version} {
         allow get: if supportStaff();
         allow list: if supportStaff() && bounded();
-        allow create: if supportStaff() && version == string(request.resource.data.version)
+        allow create: if version == string(request.resource.data.version)
           && supportHistoryWrite(ticketId,request.resource.data);
         allow update, delete: if false;
       }
@@ -427,7 +452,10 @@ service cloud.firestore {
       let b = ticketBefore(ticketId);
       let n = getAfter(/databases/$(database)/documents/supportTickets/$(ticketId)).data;
       let commentId = b == null || b.lastCommentId == n.lastCommentId ? null : n.lastCommentId;
-      return changedBooking(b,n) && h == ticketHistory(b,n,commentId);
+      return changedBooking(b,n) && h == ticketHistory(b,n,commentId)
+        && (supportStaff()
+          || (b == null && organizer() && n.createdBy == request.auth.uid
+            && n.type == 'feedback' && n.version == 1));
     }
     function supportCommentWrite(ticketId,commentId,c) {
       let b = ticketBefore(ticketId);

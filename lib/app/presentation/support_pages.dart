@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/domain/page.dart';
 import '../../core/errors/domain_exception.dart';
+import '../../core/widgets/app_link.dart';
+import '../../core/widgets/copy_friendly_image.dart';
 import '../../features/support/support_repository.dart';
 import '../../features/auth/domain/user_profile.dart';
 import '../providers.dart';
@@ -35,6 +37,25 @@ String typeLabel(String value) => switch (value) {
   'feedback' => 'Відгук',
   _ => value,
 };
+
+String historySubtitle(Map<String, dynamic> data) {
+  final status = data['toStatus'];
+  final priority = data['toPriority'];
+  final action = data['action'];
+  final statusText = status is String && status.isNotEmpty
+      ? ticketStatusLabel(status)
+      : '—';
+  final priorityText = priority is String && priority.isNotEmpty
+      ? priorityLabel(priority)
+      : '—';
+  return '$statusText · $priorityText · ${action ?? ''}';
+}
+
+DateTime? supportTimestamp(dynamic value) {
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  return null;
+}
 
 class SupportPage extends ConsumerStatefulWidget {
   const SupportPage({super.key});
@@ -82,12 +103,12 @@ class _SupportPageState extends ConsumerState<SupportPage> {
 
   @override
   Widget build(BuildContext context) => AppFrame(
-    title: 'Написати розробнику',
+    title: 'Звернення',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Звернення бачать адміністрація та розробник. Коментарі дублюються адміністратору на пошту (перевірка кожні 5 хв після увімкнення розсилки).',
+          'Звернення бачать адміністрація та розробник. Сюди також потрапляють «Зауваження та пропозиції» від користувачів.',
         ),
         const SizedBox(height: 16),
         Wrap(
@@ -127,12 +148,15 @@ class _SupportPageState extends ConsumerState<SupportPage> {
           const Text('Звернень поки немає.'),
         for (final t in tickets)
           Card(
-            child: ListTile(
-              title: Text(t.title),
-              subtitle: Text(
-                '${ticketStatusLabel(t.status)} · ${priorityLabel(t.priority)} · ${localDate(t.lastActivityAt)}',
+            child: AppLinkTap(
+              to: '/support/${t.id}',
+              builder: (context, onTap) => ListTile(
+                title: Text(t.title),
+                subtitle: Text(
+                  '${ticketStatusLabel(t.status)} · ${priorityLabel(t.priority)} · ${localDate(t.lastActivityAt)}',
+                ),
+                onTap: onTap,
               ),
-              onTap: () => context.go('/support/${t.id}'),
             ),
           ),
         if (next != null)
@@ -143,6 +167,104 @@ class _SupportPageState extends ConsumerState<SupportPage> {
       ],
     ),
   );
+}
+
+/// Public feedback form for organizers and admins (`type: feedback`).
+class FeedbackPage extends ConsumerStatefulWidget {
+  const FeedbackPage({super.key});
+  @override
+  ConsumerState<FeedbackPage> createState() => _FeedbackPageState();
+}
+
+class _FeedbackPageState extends ConsumerState<FeedbackPage> {
+  final title = TextEditingController(), body = TextEditingController();
+  final form = GlobalKey<FormState>();
+  late final String id;
+  bool busy = false;
+  Object? error;
+
+  @override
+  void initState() {
+    super.initState();
+    id = ref.read(supportRepositoryProvider).newId();
+  }
+
+  @override
+  void dispose() {
+    title.dispose();
+    body.dispose();
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    if (!form.currentState!.validate()) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await ref.read(supportRepositoryProvider).create(
+            id,
+            type: 'feedback',
+            title: title.text,
+            body: body.text,
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Дякуємо! Зауваження надіслано. Адміністрація відповість у зверненнях.',
+          ),
+        ),
+      );
+      context.go('/');
+    } catch (e) {
+      if (mounted) setState(() => error = e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AppFrame(
+        title: 'Зауваження та пропозиції',
+        child: Form(
+          key: form,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Опишіть зауваження або ідею покращення. Після збереження звернення побачать адміністрація та розробник.',
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: title,
+                maxLength: 160,
+                decoration: const InputDecoration(labelText: 'Тема'),
+                validator: (v) => (v?.trim().runes.length ?? 0) < 3
+                    ? 'Щонайменше 3 символи'
+                    : null,
+              ),
+              TextFormField(
+                controller: body,
+                maxLength: 10000,
+                minLines: 5,
+                maxLines: 12,
+                decoration: const InputDecoration(labelText: 'Опис'),
+                validator: (v) => (v?.trim().runes.length ?? 0) < 10
+                    ? 'Щонайменше 10 символів'
+                    : null,
+              ),
+              if (error != null) Problem(error!),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: busy ? null : submit,
+                child: Text(busy ? 'Надсилання…' : 'Надіслати'),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 class NewTicketPage extends ConsumerStatefulWidget {
@@ -312,11 +434,12 @@ class _NewTicketPageState extends ConsumerState<NewTicketPage> {
                 for (var i = 0; i < pendingPhotos.length; i++)
                   Stack(
                     children: [
-                      Image.memory(
-                        pendingPhotos[i].bytes,
+                      CopyFriendlyImage(
+                        bytes: pendingPhotos[i].bytes,
+                        fileName: pendingPhotos[i].name,
+                        contentType: pendingPhotos[i].type,
                         width: 96,
                         height: 96,
-                        fit: BoxFit.cover,
                       ),
                       Positioned(
                         right: 0,
@@ -382,25 +505,48 @@ class _TicketPageState extends ConsumerState<TicketPage> {
       error = null;
     });
     try {
-      final repo = ref.read(supportRepositoryProvider),
-          t = await repo.get(widget.id);
-      final c = t == null
-          ? null
-          : await repo.entries(widget.id, 'comments', PageRequest());
-      final h = t == null
-          ? null
-          : await repo.entries(widget.id, 'history', PageRequest());
-      final a = t == null
-          ? null
-          : await repo.entries(widget.id, 'attachments', PageRequest());
+      final repo = ref.read(supportRepositoryProvider);
+      final t = await repo.get(widget.id);
+      var nextComments = <SupportEntry>[];
+      var nextHistory = <SupportEntry>[];
+      var nextAttachments = <SupportEntry>[];
+      PageCursor? nextCommentCursor, nextHistoryCursor;
+      Object? sideError;
+      if (t != null) {
+        try {
+          final c = await repo.entries(widget.id, 'comments', PageRequest());
+          nextComments = c.items;
+          nextCommentCursor = c.next;
+        } catch (e) {
+          sideError ??= e;
+        }
+        try {
+          final h = await repo.entries(widget.id, 'history', PageRequest());
+          nextHistory = h.items;
+          nextHistoryCursor = h.next;
+        } catch (e) {
+          sideError ??= e;
+        }
+        try {
+          final a = await repo.entries(
+            widget.id,
+            'attachments',
+            PageRequest(),
+          );
+          nextAttachments = a.items;
+        } catch (e) {
+          sideError ??= e;
+        }
+      }
       if (mounted) {
         setState(() {
           ticket = t;
-          comments = c?.items ?? [];
-          history = h?.items ?? [];
-          attachments = a?.items ?? [];
-          commentNext = c?.next;
-          historyNext = h?.next;
+          comments = nextComments;
+          history = nextHistory;
+          attachments = nextAttachments;
+          commentNext = nextCommentCursor;
+          historyNext = nextHistoryCursor;
+          error = sideError;
         });
       }
     } catch (e) {
@@ -411,8 +557,9 @@ class _TicketPageState extends ConsumerState<TicketPage> {
   }
 
   Future<void> act(
-    Future<void> Function(SupportRepository, Ticket) action,
-  ) async {
+    Future<void> Function(SupportRepository, Ticket) action, {
+    String? successMessage,
+  }) async {
     setState(() {
       busy = true;
       error = null;
@@ -421,11 +568,56 @@ class _TicketPageState extends ConsumerState<TicketPage> {
       await action(ref.read(supportRepositoryProvider), ticket!);
       comment.clear();
       await load();
+      if (mounted && successMessage != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(successMessage)));
+      }
     } catch (e) {
       if (mounted) setState(() => error = e);
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<String?> askReopenReason() async {
+    final reason = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Відкрити повторно'),
+        content: SizedBox(
+          width: 480,
+          child: TextField(
+            controller: reason,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 8,
+            maxLength: 5000,
+            decoration: const InputDecoration(
+              labelText: 'Причина повторного відкриття',
+              helperText: 'Обов’язково поясніть, що саме лишилося невирішеним.',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Скасувати'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final text = reason.text.trim();
+              if (text.isEmpty) return;
+              Navigator.pop(context, text);
+            },
+            child: const Text('Відкрити повторно'),
+          ),
+        ],
+      ),
+    );
+    reason.dispose();
+    return result;
   }
 
   Future<void> addPhotos() async {
@@ -525,7 +717,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
               '${typeLabel(t.type)} · ${ticketStatusLabel(t.status)} · ${priorityLabel(t.priority)}',
             ),
             const SizedBox(height: 12),
-            SelectableText(t.body),
+            Text(t.body),
             const SizedBox(height: 16),
             Text('Фото', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
@@ -538,11 +730,13 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                   if (attachmentBytes(a) case final bytes?)
                     Tooltip(
                       message: '${a.data['fileName']}',
-                      child: Image.memory(
-                        bytes,
+                      child: CopyFriendlyImage(
+                        bytes: bytes,
+                        fileName: '${a.data['fileName'] ?? 'photo.jpg'}',
+                        contentType:
+                            '${a.data['contentType'] ?? 'image/jpeg'}',
                         width: 140,
                         height: 140,
-                        fit: BoxFit.cover,
                       ),
                     ),
               ],
@@ -565,7 +759,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
               decoration: const InputDecoration(
                 labelText: 'Коментар',
                 helperText:
-                    'Для повторного відкриття обов’язково поясніть причину.',
+                    'Звичайні уточнення. Причину повторного відкриття запитає окреме вікно кнопки «Відкрити повторно».',
               ),
             ),
             Wrap(
@@ -655,15 +849,26 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                             final reopening = status == 'accepted' &&
                                 ['done', 'rejected', 'closed']
                                     .contains(t.status);
+                            if (reopening) {
+                              final reason = await askReopenReason();
+                              if (reason == null || !mounted) return;
+                              await act(
+                                (r, ticket) => r.status(
+                                  ticket,
+                                  status,
+                                  comment: reason,
+                                ),
+                                successMessage: 'Звернення знову відкрито.',
+                              );
+                              return;
+                            }
                             if (await confirmAction(
                               context,
                               withdrawing
                                   ? 'Видалити звернення?'
-                                  : reopening
-                                  ? 'Відкрити повторно?'
                                   : 'Змінити статус?',
                               withdrawing
-                                  ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок.'
+                                  ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.'
                                   : ticketStatusLabel(status),
                             )) {
                               await act(
@@ -674,6 +879,9 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                                       ? null
                                       : comment.text,
                                 ),
+                                successMessage: withdrawing
+                                    ? 'Звернення закрито.'
+                                    : null,
                               );
                             }
                           },
@@ -727,11 +935,15 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${c.data['authorRole'] == 'admin' ? 'Адміністрація' : 'Розробник'} · ${localDate((c.data['createdAt'] as Timestamp).toDate())} ${localTime((c.data['createdAt'] as Timestamp).toDate())}',
-                      ),
+                      Text([
+                        c.data['authorRole'] == 'admin'
+                            ? 'Адміністрація'
+                            : 'Розробник',
+                        if (supportTimestamp(c.data['createdAt']) case final at?)
+                          '${localDate(at)} ${localTime(at)}',
+                      ].join(' · ')),
                       const SizedBox(height: 8),
-                      SelectableText(c.data['body'] as String),
+                      Text('${c.data['body'] ?? ''}'),
                     ],
                   ),
                 ),
@@ -750,9 +962,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                     title: Text(
                       '#${h.data['version']} · ${h.data['actorRole'] == 'admin' ? 'Адміністрація' : 'Розробник'}',
                     ),
-                    subtitle: Text(
-                      '${ticketStatusLabel(h.data['toStatus'] as String)} · ${priorityLabel(h.data['toPriority'] as String)} · ${h.data['action']}',
-                    ),
+                    subtitle: Text(historySubtitle(h.data)),
                   ),
                 if (historyNext != null)
                   TextButton(

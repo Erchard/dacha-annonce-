@@ -42,24 +42,29 @@ List<String> allowedTicketStatuses(String role, String status) =>
     : [];
 
 class Ticket {
+  static const _keys = {
+    'type',
+    'title',
+    'body',
+    'status',
+    'priority',
+    'createdBy',
+    'createdAt',
+    'updatedBy',
+    'updatedAt',
+    'lastActivityAt',
+    'version',
+    'lastAction',
+    'schemaVersion',
+    'lastHistoryId',
+    'lastCommentId',
+  };
+
   Ticket(this.id, Map<String, dynamic> data) {
-    final f = Fields(data, const {
-      'type',
-      'title',
-      'body',
-      'status',
-      'priority',
-      'createdBy',
-      'createdAt',
-      'updatedBy',
-      'updatedAt',
-      'lastActivityAt',
-      'version',
-      'lastAction',
-      'schemaVersion',
-      'lastHistoryId',
-      'lastCommentId',
-    });
+    // Ignore unknown keys so older/newer documents still open in the UI.
+    final f = Fields({
+      for (final key in _keys) key: data[key],
+    }, _keys);
     type = f.value<String>('type');
     title = checkedText(f.value<String>('title'), 'title', 3, 160);
     body = checkedText(f.value<String>('body'), 'body', 10, 10000);
@@ -260,19 +265,24 @@ class SupportRepository {
     await firestoreTransaction(db, (tx) async {
       final old = (await tx.get(ticket)).data();
       final profile = (await tx.get(db.collection('users').doc(uid))).data();
-      if (profile == null ||
-          profile['isDisabled'] == true ||
-          !['admin', 'developer'].contains(profile['role'])) {
+      if (profile == null || profile['isDisabled'] == true) {
         throw const DomainException(ErrorCode.permissionDenied);
       }
       final role = profile['role'] as String;
+      final staff = role == 'admin' || role == 'developer';
+      final canCreateFeedback =
+          role == 'organizer' || role == 'admin';
+      if (!staff && !(old == null && action == 'created' && canCreateFeedback)) {
+        throw const DomainException(ErrorCode.permissionDenied);
+      }
       if ((old?['version'] ?? 0) != version) {
         throw const DomainException(ErrorCode.staleVersion);
       }
       if (old == null &&
           (action != 'created' ||
-              role != 'admin' ||
-              !ticketTypes.contains(type))) {
+              !ticketTypes.contains(type) ||
+              (role == 'organizer' && type != 'feedback') ||
+              (role != 'admin' && role != 'organizer'))) {
         throw const DomainException(ErrorCode.permissionDenied);
       }
       if (action == 'status_changed' &&
@@ -333,10 +343,10 @@ class SupportRepository {
         'actorRole': role,
         'at': now,
         'fromStatus': old?['status'],
-        'toStatus': next['status'],
+        'toStatus': next['status'] ?? old?['status'],
         'commentId': comment == null ? null : commentRef.id,
         'fromPriority': old?['priority'],
-        'toPriority': next['priority'],
+        'toPriority': next['priority'] ?? old?['priority'],
       });
       if (comment != null) {
         tx.set(commentRef, {

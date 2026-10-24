@@ -1,4 +1,5 @@
 import '../../bookings/domain/event_details.dart';
+import '../../bookings/data/booking_dto.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -18,6 +19,9 @@ class PublicEventDto {
     'contactPhone',
     'notes',
     'directions',
+    'coverImageBytes',
+    'coverImageContentType',
+    'coverImageFileName',
     'startAt',
     'endAt',
     'timeZone',
@@ -31,6 +35,9 @@ class PublicEventDto {
       'contactPhone': '',
       'notes': '',
       'directions': <String>[],
+      'coverImageBytes': null,
+      'coverImageContentType': null,
+      'coverImageFileName': null,
       ...data,
     }, keys);
     if (f.value<String>('timeZone') != 'Europe/Kyiv') {
@@ -47,6 +54,7 @@ class PublicEventDto {
       contactPhone: f.value('contactPhone'),
       notes: f.value('notes'),
       directions: checkedDirections(f.value<List<dynamic>>('directions')),
+      coverImage: BookingDto.coverFrom(f.data),
       interval: BookingInterval(f.time('startAt'), f.time('endAt')),
       bookingVersion: f.value('bookingVersion'),
       publishedAt: f.time('publishedAt'),
@@ -64,6 +72,7 @@ class PublicEventDto {
     'contactPhone': event.contactPhone,
     'notes': event.notes,
     'directions': event.directions,
+    ...BookingDto.coverFields(event.coverImage),
     'startAt': Timestamp.fromDate(event.interval.start),
     'endAt': Timestamp.fromDate(event.interval.end),
     'timeZone': 'Europe/Kyiv',

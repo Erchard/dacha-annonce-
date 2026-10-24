@@ -5,7 +5,7 @@
   "display": "standalone",
   "background_color": "#FFFFFF",
   "theme_color": "#36674D",
-  "description": "Календар заходів та бронювання простору",
+  "description": "Календар заходів Дачі",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "icons": [

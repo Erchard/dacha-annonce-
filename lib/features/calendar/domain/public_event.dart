@@ -15,6 +15,7 @@ class PublicEvent {
     String contactPhone = '',
     String notes = '',
     List<String> directions = const [],
+    this.coverImage,
     required this.bookingVersion,
     required this.publishedAt,
     required this.updatedAt,
@@ -39,6 +40,7 @@ class PublicEvent {
       responsibleName;
   final String contactPhone, notes;
   final List<String> directions;
+  final CoverImage? coverImage;
   final BookingInterval interval;
   final int bookingVersion;
   final DateTime publishedAt, updatedAt;

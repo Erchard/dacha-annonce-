@@ -137,3 +137,7 @@ Production dacha-annonce: опубліковано Firestore Rules, два ін�
 Перевірки: dart format без змін; 42 Flutter-тести PASS; 33 Rules-тести PASS, зокрема нові поля, підроблена публічна проєкція, заборонені ролі та перенесення між чотирма блоками. Наскрізний Flutter-сценарій у браузері на demo-dacha: PASS (booking, support, audit, roles). Production web build успішний. Analyze: 0 errors/warnings, 2 попередні info у support_draft_web.dart щодо dart:html. У Rules усунено повторні обчислення та кешовано проміжні значення, щоб вкладатися в ліміт 1000 expressions; обмеження доступу й атомарність збережено.
 
 Вручну перевірено desktop-таблицю з реальною старою подією, мобільні картки 390 px, вибір дня через календар та фільтр напрямку на production-індексах. Нові поля перевірені на локальних тестових даних; реальні події не створювалися й не редагувалися під час QA. Знімок: .tools/oct22-published-schedule.png. Звернення WZsUavs1abnkzahWZvCk та Km67Ixi8IHsAomQb3kSn переведено в done з коментарями після deployment. Commit/push не виконувалися.
+
+## MI tickets 24.10.2026 — Hosting + Rules
+
+Production `dacha-annonce`: Hosting + Firestore Rules для шести звернень від 24.10 (reopen UX, notes, directions лише в розкладі, меню, `/feedback`, нова вкладка). Alias CLI лишається `demo-dacha`; деплой із `--project dacha-annonce`. «Комунікація» свідомо не входила в цей реліз.

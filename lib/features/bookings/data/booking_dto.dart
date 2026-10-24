@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../bookings/domain/event_details.dart';
 import '../../../core/data/firestore_fields.dart';
 import '../../../core/errors/domain_exception.dart';
@@ -14,6 +16,9 @@ class BookingDto {
     'contactPhone',
     'notes',
     'directions',
+    'coverImageBytes',
+    'coverImageContentType',
+    'coverImageFileName',
     'startAt',
     'endAt',
     'timeZone',
@@ -35,11 +40,30 @@ class BookingDto {
     'updatedBy',
     'schemaVersion',
   };
+
+  static CoverImage? coverFrom(Map<String, dynamic> data) {
+    final raw = data['coverImageBytes'];
+    return CoverImage.optional(
+      bytes: raw is Blob ? raw.bytes : raw,
+      contentType: data['coverImageContentType'],
+      fileName: data['coverImageFileName'],
+    );
+  }
+
+  static Map<String, dynamic> coverFields(CoverImage? cover) => {
+    'coverImageBytes': cover == null ? null : Blob(cover.bytes),
+    'coverImageContentType': cover?.contentType,
+    'coverImageFileName': cover?.fileName,
+  };
+
   static Booking decode(String id, Map<String, dynamic> data) {
     final f = Fields({
       'contactPhone': '',
       'notes': '',
       'directions': <String>[],
+      'coverImageBytes': null,
+      'coverImageContentType': null,
+      'coverImageFileName': null,
       ...data,
     }, keys);
     if (f.value<String>('timeZone') != 'Europe/Kyiv' ||
@@ -67,6 +91,7 @@ class BookingDto {
         contactPhone: f.value('contactPhone'),
         notes: f.value('notes'),
         directions: checkedDirections(f.value<List<dynamic>>('directions')),
+        coverImage: coverFrom(f.data),
         interval: interval,
       ),
       status: f.enumeration('status', BookingStatus.values),

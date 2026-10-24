@@ -57,9 +57,13 @@ void main() {
     final legacy = {...data}
       ..remove('contactPhone')
       ..remove('notes')
-      ..remove('directions');
+      ..remove('directions')
+      ..remove('coverImageBytes')
+      ..remove('coverImageContentType')
+      ..remove('coverImageFileName');
     expect(PublicEventDto.decode('old', legacy).contactPhone, '');
     expect(PublicEventDto.decode('old', legacy).directions, isEmpty);
+    expect(PublicEventDto.decode('old', legacy).coverImage, isNull);
     expect(PublicEventDto.encode(PublicEventDto.decode('new', data)), data);
     for (final patch in [
       <String, dynamic>{

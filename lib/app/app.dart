@@ -292,6 +292,13 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
           const ProtectedPage(roles: [UserRole.admin], child: AdminUsersPage()),
     ),
     GoRoute(
+      path: '/feedback',
+      builder: (context, state) => const ProtectedPage(
+        roles: [UserRole.organizer, UserRole.admin],
+        child: FeedbackPage(),
+      ),
+    ),
+    GoRoute(
       path: '/support',
       builder: (context, state) => const ProtectedPage(
         roles: [UserRole.admin, UserRole.developer],

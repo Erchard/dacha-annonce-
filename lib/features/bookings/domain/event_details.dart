@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../../core/errors/domain_exception.dart';
 
 const eventDirections = <String>[
@@ -17,6 +19,65 @@ const eventDirections = <String>[
   'Творчі зустрічі',
   'Концерт',
 ];
+
+const coverImageContentTypes = {'image/jpeg', 'image/png', 'image/webp'};
+const maxCoverImageBytes = 700000;
+
+class CoverImage {
+  CoverImage({
+    required Uint8List bytes,
+    required String contentType,
+    required String fileName,
+  }) : bytes = Uint8List.fromList(bytes),
+       contentType = contentType.trim(),
+       fileName = checkedText(fileName.trim(), 'coverImageFileName', 1, 160) {
+    if (this.bytes.isEmpty || this.bytes.length > maxCoverImageBytes) {
+      throw const DomainException(ErrorCode.validation, field: 'coverImage');
+    }
+    if (!coverImageContentTypes.contains(this.contentType)) {
+      throw const DomainException(
+        ErrorCode.validation,
+        field: 'coverImageContentType',
+      );
+    }
+  }
+
+  final Uint8List bytes;
+  final String contentType, fileName;
+
+  static CoverImage? optional({
+    required dynamic bytes,
+    required dynamic contentType,
+    required dynamic fileName,
+  }) {
+    if (bytes == null && contentType == null && fileName == null) return null;
+    if (bytes is! Uint8List || contentType is! String || fileName is! String) {
+      throw const DomainException(ErrorCode.validation, field: 'coverImage');
+    }
+    return CoverImage(
+      bytes: bytes,
+      contentType: contentType,
+      fileName: fileName,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! CoverImage ||
+        contentType != other.contentType ||
+        fileName != other.fileName ||
+        bytes.length != other.bytes.length) {
+      return false;
+    }
+    for (var i = 0; i < bytes.length; i++) {
+      if (bytes[i] != other.bytes[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(contentType, fileName, bytes.length);
+}
 
 String checkedContactPhone(String value) {
   final phone = value.trim();

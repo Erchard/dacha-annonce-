@@ -437,7 +437,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                     user.displayName,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  SelectableText(
+                  Text(
                     user.id,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),

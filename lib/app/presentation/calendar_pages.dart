@@ -6,13 +6,19 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../core/calendar/event_calendar_export.dart';
 import '../../core/domain/page.dart';
 import '../../core/time/time_zone_service.dart';
+import '../../core/web/share_actions.dart';
+import '../../core/widgets/app_link.dart';
+import '../../core/widgets/copy_friendly_image.dart';
+import '../../core/widgets/direction_chip.dart';
 import '../../features/auth/domain/user_profile.dart';
 import '../../features/bookings/domain/event_details.dart';
 import '../../features/calendar/domain/public_event.dart';
 import '../../features/rooms/domain/room.dart';
 import '../providers.dart';
+import 'event_preview_sheet.dart';
 import 'shared.dart';
 
 class CalendarPage extends ConsumerStatefulWidget {
@@ -36,11 +42,32 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
   List<PublicEvent> events = [];
   List<Room> rooms = [];
   final Set<String> selectedDirections = {};
+  final searchController = TextEditingController();
+  String searchQuery = '';
   PageCursor? next, roomNext;
   bool busy = true;
   int generation = 0;
   Object? error;
   String? invalidDate;
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  List<PublicEvent> visibleEvents() {
+    final q = searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return events;
+    return events.where((ev) {
+      return ev.title.toLowerCase().contains(q) ||
+          ev.description.toLowerCase().contains(q) ||
+          ev.responsibleName.toLowerCase().contains(q) ||
+          ev.roomNameSnapshot.toLowerCase().contains(q) ||
+          ev.locationSnapshot.toLowerCase().contains(q) ||
+          ev.notes.toLowerCase().contains(q);
+    }).toList();
+  }
 
   DateTime civil(DateTime value) =>
       DateTime(value.year, value.month, value.day);
@@ -105,6 +132,9 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         old.roomId != widget.roomId ||
         old.view != widget.view ||
         old.pagePath != widget.pagePath) {
+      if (old.pagePath == '/schedule' && widget.pagePath != '/schedule') {
+        selectedDirections.clear();
+      }
       readQuery();
       load(reset: true);
     }
@@ -135,7 +165,9 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         range.end,
         PageRequest(after: reset ? null : next),
         roomId: widget.roomId,
-        directions: selectedDirections.toList()..sort(),
+        directions: isSchedule
+            ? (selectedDirections.toList()..sort())
+            : const [],
       );
       final roomPage = rooms.isEmpty
           ? await repo.listRooms(PageRequest(limit: 100))
@@ -244,12 +276,6 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
             )
           else
             const Text('Зустрічі, події та спільні справи. Час — Київ.'),
-          if (admin) ...[
-            const SizedBox(height: 12),
-            const Text(
-              '1. Додайте локації в Керуванні. 2. Створіть подію. 3. Знайдіть її в цьому розкладі.',
-            ),
-          ],
           const SizedBox(height: 20),
           Wrap(
             spacing: 8,
@@ -317,6 +343,26 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 child: const Text('Забронювати'),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: searchController,
+            decoration: InputDecoration(
+              labelText: 'Пошук подій',
+              hintText: 'Назва, опис, відповідальний, локація',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Очистити',
+                      onPressed: () => setState(() {
+                        searchController.clear();
+                        searchQuery = '';
+                      }),
+                      icon: const Icon(Icons.clear),
+                    ),
+            ),
+            onChanged: (value) => setState(() => searchQuery = value),
           ),
           const SizedBox(height: 16),
           LayoutBuilder(
@@ -395,15 +441,15 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                                       runSpacing: 4,
                                       children: [
                                         for (final direction in eventDirections)
-                                          FilterChip(
-                                            label: Text(direction),
+                                          DirectionChip(
+                                            direction: direction,
                                             selected: next.contains(direction),
-                                            onSelected: (selected) {
+                                            onTap: () {
                                               setDialog(() {
-                                                if (selected) {
-                                                  next.add(direction);
-                                                } else {
+                                                if (next.contains(direction)) {
                                                   next.remove(direction);
+                                                } else {
+                                                  next.add(direction);
                                                 }
                                               });
                                             },
@@ -458,6 +504,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   ),
                 ),
               );
+              if (!isSchedule) return locationField;
               if (sideBySide) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -522,37 +569,55 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                     constraints.maxWidth >= (isSchedule ? 720 : 760) &&
                     MediaQuery.textScalerOf(context).scale(1) <= 1.4;
                 if (isSchedule) {
+                  final shown = visibleEvents();
                   return ScheduleTable(
-                    events: events,
+                    events: shown,
                     wide: wide,
                     view: view,
                   );
                 }
+                final shown = visibleEvents();
                 return Column(
                   children: [
                     if (wide && view == 'month')
                       _MonthGrid(
                         month: DateTime(focus.year, focus.month),
-                        events: events,
+                        events: shown,
                         pagePath: widget.pagePath,
+                        onEventTap: (event) =>
+                            showEventPreview(context, event),
                       ),
                     if (wide && view == 'week')
-                      _WeekGrid(focus: focus, events: events),
+                      _WeekGrid(
+                        focus: focus,
+                        events: shown,
+                        onEventTap: (event) =>
+                            showEventPreview(context, event),
+                      ),
                     if (!wide || view == 'day' || view == 'list')
-                      for (final event in events)
+                      for (final event in shown)
                         Card(
                           child: ListTile(
                             isThreeLine: true,
                             title: Text(
                               '${localDate(event.interval.start)} · ${localTime(event.interval.start)}–${localTime(event.interval.end)} · ${event.title}',
                             ),
-                            subtitle: Text(
-                              '${event.roomNameSnapshot}${event.responsibleName.isEmpty ? '' : ' · ${event.responsibleName}'}',
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${event.roomNameSnapshot}${event.responsibleName.isEmpty ? '' : ' · ${event.responsibleName}'}',
+                                ),
+                                if (event.directions.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  DirectionChipWrap(
+                                    directions: event.directions,
+                                  ),
+                                ],
+                              ],
                             ),
                             trailing: const Icon(Icons.chevron_right),
-                            onTap: () => context.go(
-                              '/events/${Uri.encodeComponent(event.id)}',
-                            ),
+                            onTap: () => showEventPreview(context, event),
                           ),
                         ),
                   ],
@@ -583,10 +648,12 @@ class _MonthGrid extends StatelessWidget {
     required this.month,
     required this.events,
     required this.pagePath,
+    required this.onEventTap,
   });
   final DateTime month;
   final List<PublicEvent> events;
   final String pagePath;
+  final ValueChanged<PublicEvent> onEventTap;
 
   @override
   Widget build(BuildContext context) {
@@ -666,9 +733,7 @@ class _MonthGrid extends StatelessWidget {
                     ),
                     for (final event in todayEvents.take(2))
                       InkWell(
-                        onTap: () => context.go(
-                          '/events/${Uri.encodeComponent(event.id)}',
-                        ),
+                        onTap: () => onEventTap(event),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 3),
                           child: Text(
@@ -729,6 +794,31 @@ String eventWhenLabel(PublicEvent event) {
   return '$startDate · $startTime — $endDate $endTime (Київ)';
 }
 
+/// Plain text for Facebook post / OG description (same layout as share pages).
+String eventSharePlainText(PublicEvent event) {
+  final startDate = localDate(event.interval.start);
+  final endDate = localDate(event.interval.end);
+  final startTime = localTime(event.interval.start);
+  final endTime = localTime(event.interval.end);
+  final when = startDate == endDate
+      ? '$startDate, $startTime-$endTime (Київ)'
+      : '$startDate, $startTime — $endDate, $endTime (Київ)';
+  final place = [
+    event.roomNameSnapshot,
+    event.locationSnapshot,
+  ].where((s) => s.trim().isNotEmpty).join(', ');
+  return [
+    event.title.trim(),
+    when,
+    place,
+    if (event.responsibleName.trim().isNotEmpty)
+      'Відповідальний: ${event.responsibleName.trim()}',
+    event.description.trim(),
+    if (event.notes.trim().isNotEmpty) 'Примітки: ${event.notes.trim()}',
+    if (event.directions.isNotEmpty) event.directions.join(', '),
+  ].where((s) => s.isNotEmpty).join('\n\n');
+}
+
 class _CalendarDayLabel extends StatelessWidget {
   const _CalendarDayLabel(this.day);
   final DateTime day;
@@ -762,9 +852,14 @@ class _CalendarDayLabel extends StatelessWidget {
 }
 
 class _WeekGrid extends StatelessWidget {
-  const _WeekGrid({required this.focus, required this.events});
+  const _WeekGrid({
+    required this.focus,
+    required this.events,
+    required this.onEventTap,
+  });
   final DateTime focus;
   final List<PublicEvent> events;
+  final ValueChanged<PublicEvent> onEventTap;
 
   @override
   Widget build(BuildContext context) {
@@ -832,8 +927,7 @@ class _WeekGrid extends StatelessWidget {
           ),
           for (final event in todayEvents)
             InkWell(
-              onTap: () =>
-                  context.go('/events/${Uri.encodeComponent(event.id)}'),
+              onTap: () => onEventTap(event),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Text(
@@ -865,6 +959,33 @@ class _EventPageState extends ConsumerState<EventPage> {
     event = ref.read(repositoryProvider).getPublishedEvent(widget.id);
   }
 
+  /// Static OG card on Hosting (`/s/{id}.html`), regenerated on deploy.
+  String eventShareCardUrl(PublicEvent data) =>
+      '${Uri.base.origin}/s/${Uri.encodeComponent(data.id)}.html';
+
+  Future<void> shareToFacebook(PublicEvent data) async {
+    // Facebook does not allow pre-filling the post body. Copy plain text so
+    // the user can paste it (Ctrl+V), then open the link sharer only.
+    final text = eventSharePlainText(data);
+    final copied = await copyTextToClipboard(text);
+    openExternalUrl(
+      Uri.https('www.facebook.com', '/sharer/sharer.php', {
+        'u': eventShareCardUrl(data),
+      }).toString(),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          copied
+              ? 'Текст події скопійовано. Вставте його в допис Facebook (Ctrl+V).'
+              : 'Відкрито Facebook. Скопіюйте текст події зі сторінки вручну.',
+        ),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => AppFrame(
     title: 'Подія',
@@ -893,24 +1014,81 @@ class _EventPageState extends ConsumerState<EventPage> {
           children: [
             Text(data.title, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 16),
+            if (data.coverImage case final cover?) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: CopyFriendlyImage(
+                    bytes: cover.bytes,
+                    fileName: cover.fileName,
+                    contentType: cover.contentType,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             Text(eventWhenLabel(data)),
             Text('${data.roomNameSnapshot} · ${data.locationSnapshot}'),
             if (data.responsibleName.isNotEmpty)
               Text('Відповідальний: ${data.responsibleName}'),
+            if (data.directions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              DirectionChipWrap(directions: data.directions),
+            ],
             const SizedBox(height: 24),
-            SelectableText(data.description),
+            Text(data.description),
             if (data.contactPhone.isNotEmpty)
-              SelectableText('Телефон: ${data.contactPhone}'),
+              Text('Телефон: ${data.contactPhone}'),
             if (data.notes.isNotEmpty) Text('Примітки: ${data.notes}'),
-            if (data.directions.isNotEmpty) Text(data.directions.join(' · ')),
             const SizedBox(height: 24),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => shareToFacebook(data),
+                  icon: const Icon(Icons.facebook),
+                  label: Text(
+                    data.coverImage == null
+                        ? 'Поділитися у Facebook'
+                        : 'Поділитися у Facebook з фото',
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    downloadTextFile(
+                      fileName: eventIcsFileName(data),
+                      content: eventIcsContent(data),
+                      mimeType: 'text/calendar;charset=utf-8',
+                    );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Файл календаря (.ics) завантажено.'),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.download),
+                  label: const Text('Завантажити .ics'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      openExternalUrl(googleCalendarUrl(data).toString()),
+                  icon: const Icon(Icons.event_available),
+                  label: const Text('У Google Calendar'),
+                ),
+              ],
+            ),
             if (ref.watch(profileProvider).asData?.value?.role ==
-                UserRole.admin)
+                UserRole.admin) ...[
+              const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: () => context.go('/bookings/${data.id}'),
                 icon: const Icon(Icons.edit_calendar),
                 label: const Text('Керувати подією / Видалити'),
               ),
+            ],
             TextButton(
               onPressed: () => context.go('/'),
               child: const Text('До календаря'),
@@ -930,6 +1108,7 @@ class RoomsPage extends ConsumerStatefulWidget {
 
 class _RoomsPageState extends ConsumerState<RoomsPage> {
   List<Room> rooms = [];
+  List<PublicEvent> upcoming = [];
   PageCursor? next;
   Object? error;
   bool busy = true;
@@ -943,15 +1122,32 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
     setState(() {
       busy = true;
       error = null;
+      if (next == null) {
+        rooms = [];
+        upcoming = [];
+      }
     });
     try {
-      final page = await ref
-          .read(repositoryProvider)
-          .listRooms(PageRequest(after: next));
+      final repo = ref.read(repositoryProvider);
+      final page = await repo.listRooms(PageRequest(after: next));
+      List<PublicEvent> events = upcoming;
+      if (next == null) {
+        final kyiv = TimeZoneService().toKyiv(DateTime.now());
+        final from = DateTime(kyiv.year, kyiv.month, kyiv.day);
+        final to = DateTime(kyiv.year, kyiv.month, kyiv.day + 45);
+        final location = tz.getLocation('Europe/Kyiv');
+        final range = await repo.listRange(
+          tz.TZDateTime(location, from.year, from.month, from.day).toUtc(),
+          tz.TZDateTime(location, to.year, to.month, to.day).toUtc(),
+          PageRequest(limit: 100),
+        );
+        events = range.items;
+      }
       if (mounted) {
         setState(() {
           rooms = [...rooms, ...page.items];
           next = page.next;
+          upcoming = events;
         });
       }
     } catch (e) {
@@ -961,13 +1157,22 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
     }
   }
 
+  List<PublicEvent> upcomingFor(String roomId) {
+    final list = upcoming.where((e) => e.roomId == roomId).toList()
+      ..sort((a, b) => a.interval.start.compareTo(b.interval.start));
+    return list;
+  }
+
   @override
   Widget build(BuildContext context) => AppFrame(
     title: 'Локації',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (error != null) Problem(error!, retry: load),
+        if (error != null) Problem(error!, retry: () {
+          next = null;
+          load();
+        }),
         if (busy) const LinearProgressIndicator(),
         if (!busy && error == null && rooms.isEmpty)
           const Text('Локації ще не додані.'),
@@ -984,26 +1189,62 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
                   ),
                   Text(room.locationLabel),
                   if (room.capacity != null)
-                    Text('Місткість: ${room.capacity}'),
+                    Text('Місткість: до ${room.capacity} осіб'),
                   const SizedBox(height: 8),
                   Text(room.description),
-                  TextButton(
-                    onPressed: () => context.go(
-                      Uri(
-                        path: '/schedule',
-                        queryParameters: {'room': room.id},
-                      ).toString(),
-                    ),
+                  const SizedBox(height: 12),
+                  Builder(
+                    builder: (context) {
+                      final nextEvents = upcomingFor(room.id);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Найближчі події: ${nextEvents.length}',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 6),
+                          if (nextEvents.isEmpty)
+                            const Text(
+                              'Наразі немає запланованих подій.',
+                              style: TextStyle(fontSize: 13),
+                            )
+                          else
+                            for (final event in nextEvents.take(2))
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: InkWell(
+                                  onTap: () =>
+                                      showEventPreview(context, event),
+                                  child: Text(
+                                    '${localDate(event.interval.start)} · ${event.title}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  AppLink(
+                    to: Uri(
+                      path: '/schedule',
+                      queryParameters: {'room': room.id},
+                    ).toString(),
                     child: const Text('Розклад локації'),
                   ),
-                  TextButton(
-                    onPressed: () => context.go(
-                      Uri(
-                        path: '/bookings/new',
-                        queryParameters: {'room': room.id},
-                      ).toString(),
-                    ),
-                    child: const Text('Забронювати'),
+                  AppLink(
+                    to: Uri(
+                      path: '/bookings/new',
+                      queryParameters: {'room': room.id},
+                    ).toString(),
+                    child: Text('Забронювати ${room.name}'),
                   ),
                 ],
               ),

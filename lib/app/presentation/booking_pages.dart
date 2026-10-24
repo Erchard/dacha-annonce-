@@ -1,6 +1,7 @@
 import '../../features/bookings/domain/event_details.dart';
 import '../../features/bookings/data/booking_service.dart';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,8 @@ import '../../core/domain/page.dart';
 import '../../core/errors/domain_exception.dart';
 import '../../core/time/booking_time.dart';
 import '../../core/time/time_zone_service.dart';
+import '../../core/widgets/app_link.dart';
+import '../../core/widgets/copy_friendly_image.dart';
 import '../../features/auth/domain/user_profile.dart';
 import '../../features/bookings/domain/booking.dart';
 import '../../features/bookings/domain/weekly_series.dart';
@@ -85,20 +88,6 @@ class _BookingsPageState extends ConsumerState<BookingsPage> {
               ),
               child: Text(widget.forAdmin ? 'Створити подію' : 'Подати заявку'),
             ),
-            if (widget.forAdmin) ...[
-              OutlinedButton(
-                onPressed: () => context.go('/admin/rooms'),
-                child: const Text('Локації'),
-              ),
-              OutlinedButton(
-                onPressed: () => context.go('/admin/users'),
-                child: const Text('Користувачі'),
-              ),
-              OutlinedButton(
-                onPressed: () => context.go('/support'),
-                child: const Text('Написати розробнику'),
-              ),
-            ],
           ],
         ),
         const SizedBox(height: 20),
@@ -138,14 +127,17 @@ class _BookingsPageState extends ConsumerState<BookingsPage> {
           ),
         for (final booking in items)
           Card(
-            child: ListTile(
-              title: Text(booking.draft.title),
-              subtitle: Text(
-                '${statusLabel(booking.status)}\n${localDate(booking.draft.interval.start)} · ${localTime(booking.draft.interval.start)}–${localTime(booking.draft.interval.end)}${booking.draft.responsibleName.isEmpty ? '' : '\n${booking.draft.responsibleName}'}',
+            child: AppLinkTap(
+              to: '/bookings/${booking.id}',
+              builder: (context, onTap) => ListTile(
+                title: Text(booking.draft.title),
+                subtitle: Text(
+                  '${statusLabel(booking.status)}\n${localDate(booking.draft.interval.start)} · ${localTime(booking.draft.interval.start)}–${localTime(booking.draft.interval.end)}${booking.draft.responsibleName.isEmpty ? '' : '\n${booking.draft.responsibleName}'}',
+                ),
+                isThreeLine: true,
+                onTap: onTap,
+                trailing: const Icon(Icons.chevron_right),
               ),
-              isThreeLine: true,
-              onTap: () => context.go('/bookings/${booking.id}'),
-              trailing: const Icon(Icons.chevron_right),
             ),
           ),
         if (next != null)
@@ -193,6 +185,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
   String? seriesToken;
   bool weekly = false;
   List<String> directions = [];
+  CoverImage? coverImage;
   Booking? original;
   List<Room> rooms = [];
   String? roomId, message;
@@ -347,6 +340,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
             contactPhone.text = booking.draft.contactPhone;
             notes.text = booking.draft.notes;
             directions = [...booking.draft.directions];
+            coverImage = booking.draft.coverImage;
             final local = TimeZoneService().toKyiv(
               booking.draft.interval.start,
             );
@@ -398,6 +392,39 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
         ],
       ),
     );
+  }
+
+  Future<void> pickCover() async {
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+    );
+    if (files.isEmpty || !mounted) return;
+    final file = files.first;
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return;
+    try {
+      final lower = file.name.toLowerCase();
+      final contentType = lower.endsWith('.png')
+          ? 'image/png'
+          : lower.endsWith('.webp')
+          ? 'image/webp'
+          : 'image/jpeg';
+      setState(
+        () => coverImage = CoverImage(
+          bytes: bytes,
+          contentType: contentType,
+          fileName: file.name,
+        ),
+      );
+    } on DomainException {
+      if (mounted) {
+        setState(
+          () => message =
+              'Фото: JPEG, PNG або WebP до ${(maxCoverImageBytes / 1000).round()} КБ.',
+        );
+      }
+    }
   }
 
   Future<BookingInterval?> intervalOnDay(DateTime day) async {
@@ -478,6 +505,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
           contactPhone: contactPhone.text,
           notes: notes.text,
           directions: directions,
+          coverImage: coverImage,
           interval: interval,
         );
         await service.execute(
@@ -534,6 +562,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
         contactPhone: contactPhone.text,
         notes: notes.text,
         directions: directions,
+        coverImage: coverImage,
         interval: interval,
       );
       if (weekly &&
@@ -634,6 +663,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
       existing.draft.contactPhone == draft.contactPhone &&
       existing.draft.notes == draft.notes &&
       existing.draft.directions.join("|") == draft.directions.join("|") &&
+      existing.draft.coverImage == draft.coverImage &&
       existing.draft.interval.start == date.interval!.start &&
       existing.draft.interval.end == date.interval!.end;
 
@@ -747,6 +777,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                 contactPhone: draft.contactPhone,
                 notes: draft.notes,
                 directions: draft.directions,
+                coverImage: draft.coverImage,
                 interval: date.interval!,
               ),
             );
@@ -837,6 +868,48 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                     maxLines: 4,
                     maxLength: 5000,
                   ),
+                  const SizedBox(height: 8),
+                  const Text('Ілюстративне фото (необов’язково)'),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Одне фото для сторінки події. JPEG, PNG або WebP до ${(maxCoverImageBytes / 1000).round()} КБ.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  if (coverImage != null) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: CopyFriendlyImage(
+                        bytes: coverImage!.bytes,
+                        fileName: coverImage!.fileName,
+                        contentType: coverImage!.contentType,
+                        width: 240,
+                        height: 160,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: busy ? null : pickCover,
+                        icon: const Icon(Icons.image_outlined),
+                        label: Text(
+                          coverImage == null ? 'Додати фото' : 'Замінити фото',
+                        ),
+                      ),
+                      if (coverImage != null)
+                        TextButton(
+                          onPressed: busy
+                              ? null
+                              : () => setState(() => coverImage = null),
+                          child: const Text('Прибрати фото'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: responsible,
                     decoration: const InputDecoration(
@@ -1204,7 +1277,22 @@ class _BookingDetailPageState extends ConsumerState<BookingDetailPage> {
                 '${localDate(booking.draft.interval.start)} · ${localTime(booking.draft.interval.start)} — ${localDate(booking.draft.interval.end)} ${localTime(booking.draft.interval.end)} (Київ)',
               ),
               const SizedBox(height: 16),
-              SelectableText(booking.draft.description),
+              if (booking.draft.coverImage case final cover?) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: CopyFriendlyImage(
+                      bytes: cover.bytes,
+                      fileName: cover.fileName,
+                      contentType: cover.contentType,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Text(booking.draft.description),
               if (booking.rejectionReason != null)
                 Text('Причина відхилення: ${booking.rejectionReason}'),
               if (booking.cancellationReason?.isNotEmpty == true)

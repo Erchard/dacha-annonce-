@@ -20,15 +20,30 @@
   <meta name="theme-color" content="#36674D">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Дача — календар заходів та бронювання простору.">
+  <meta property="og:site_name" content="Дача">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="uk_UA">
+  <meta property="og:title" content="Дача — календар заходів">
+  <meta property="og:description" content="Розклад подій і бронювання простору Дача. Оберіть дату, локацію та подайте заявку.">
+  <meta property="og:url" content="https://dacha-annonce.web.app/">
+  <meta property="og:image" content="https://dacha-annonce.web.app/brand/og-default.png?v=20261024b">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Дача — календар заходів">
+  <meta name="twitter:description" content="Розклад подій і бронювання простору Дача.">
+  <meta name="twitter:image" content="https://dacha-annonce.web.app/brand/og-default.png?v=20261024b">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Дача">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" href="icons/Icon-180.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="48x48" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/Icon-192.png"/>
 
   <title>Дача</title>
   <link rel="manifest" href="manifest.json">
@@ -43,6 +58,13 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
+  </script>
 </body>
 </html>
 

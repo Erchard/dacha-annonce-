@@ -1,1 +1,40 @@
-{"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"hosting":{"public":"build/web","ignore":["firebase.json","**/.*","**/node_modules/**"],"rewrites":[{"source":"**","destination":"/index.html"}],"headers":[{"source":"**","headers":[{"key":"Cache-Control","value":"no-cache"}]}]},"emulators":{"auth":{"host":"127.0.0.1","port":9099},"firestore":{"host":"127.0.0.1","port":8080},"hosting":{"host":"127.0.0.1","port":5000},"ui":{"enabled":true,"host":"127.0.0.1","port":4000},"singleProjectMode":true},"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"dacha-annonce","configurations":{"web":"1:514841805310:web:c23d5b2891c16f9c37c0af"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "/s/**",
+        "headers": [{ "key": "Cache-Control", "value": "public,max-age=300" }]
+      },
+      {
+        "source": "**",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  },
+  "emulators": {
+    "auth": { "host": "127.0.0.1", "port": 9099 },
+    "firestore": { "host": "127.0.0.1", "port": 8080 },
+    "hosting": { "host": "127.0.0.1", "port": 5000 },
+    "ui": { "enabled": true, "host": "127.0.0.1", "port": 4000 },
+    "singleProjectMode": true
+  },
+  "flutter": {
+    "platforms": {
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "dacha-annonce",
+          "configurations": {
+            "web": "1:514841805310:web:c23d5b2891c16f9c37c0af"
+          }
+        }
+      }
+    }
+  }
+}

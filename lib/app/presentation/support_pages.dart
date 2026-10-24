@@ -156,6 +156,51 @@ class _SupportPageState extends ConsumerState<SupportPage> {
                   '${ticketStatusLabel(t.status)} · ${priorityLabel(t.priority)} · ${localDate(t.lastActivityAt)}',
                 ),
                 onTap: onTap,
+                trailing:
+                    ref.watch(profileProvider).asData?.value?.role ==
+                            UserRole.admin &&
+                        t.status == 'new'
+                    ? IconButton(
+                        tooltip: 'Видалити звернення',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: busy
+                            ? null
+                            : () async {
+                                final messenger =
+                                    ScaffoldMessenger.of(this.context);
+                                if (!await confirmAction(
+                                  this.context,
+                                  'Видалити звернення?',
+                                  'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.',
+                                )) {
+                                  return;
+                                }
+                                if (!mounted) return;
+                                setState(() {
+                                  busy = true;
+                                  error = null;
+                                });
+                                try {
+                                  await ref
+                                      .read(supportRepositoryProvider)
+                                      .status(t, 'closed');
+                                  if (!mounted) return;
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Звернення закрито.'),
+                                    ),
+                                  );
+                                  await load(true);
+                                } catch (e) {
+                                  if (mounted) setState(() => error = e);
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => busy = false);
+                                  }
+                                }
+                              },
+                      )
+                    : null,
               ),
             ),
           ),
@@ -762,6 +807,14 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                     'Звичайні уточнення. Причину повторного відкриття запитає окреме вікно кнопки «Відкрити повторно».',
               ),
             ),
+            if (role == 'admin' && t.status == 'new')
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Помилкове або тестове звернення зі статусом «Нове» можна прибрати кнопкою Видалити (запис лишається в історії). Також є іконка кошика в списку звернень.',
+                  style: TextStyle(fontSize: 13),
+                ),
+              ),
             Wrap(
               spacing: 12,
               runSpacing: 12,
@@ -838,64 +891,69 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                     child: const Text('Редагувати'),
                   ),
                 for (final status in allowedTicketStatuses(role, t.status))
-                  OutlinedButton(
-                    onPressed: busy
-                        ? null
-                        : () async {
-                            final withdrawing =
-                                role == 'admin' &&
-                                t.status == 'new' &&
-                                status == 'closed';
-                            final reopening = status == 'accepted' &&
-                                ['done', 'rejected', 'closed']
-                                    .contains(t.status);
-                            if (reopening) {
-                              final reason = await askReopenReason();
-                              if (reason == null || !mounted) return;
-                              await act(
-                                (r, ticket) => r.status(
-                                  ticket,
-                                  status,
-                                  comment: reason,
-                                ),
-                                successMessage: 'Звернення знову відкрито.',
-                              );
-                              return;
-                            }
-                            if (await confirmAction(
-                              context,
-                              withdrawing
-                                  ? 'Видалити звернення?'
-                                  : 'Змінити статус?',
-                              withdrawing
-                                  ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.'
-                                  : ticketStatusLabel(status),
-                            )) {
-                              await act(
-                                (r, ticket) => r.status(
-                                  ticket,
-                                  status,
-                                  comment: comment.text.trim().isEmpty
-                                      ? null
-                                      : comment.text,
-                                ),
-                                successMessage: withdrawing
-                                    ? 'Звернення закрито.'
-                                    : null,
-                              );
-                            }
-                          },
-                    child: Text(
-                      role == 'admin' &&
-                              t.status == 'new' &&
-                              status == 'closed'
+                  Builder(
+                    builder: (context) {
+                      final withdrawing = role == 'admin' &&
+                          t.status == 'new' &&
+                          status == 'closed';
+                      final reopening = status == 'new' &&
+                          ['done', 'rejected', 'closed'].contains(t.status);
+                      final label = withdrawing
                           ? 'Видалити'
-                          : status == 'accepted' &&
-                                ['done', 'rejected', 'closed']
-                                    .contains(t.status)
+                          : reopening
                           ? 'Відкрити повторно'
-                          : ticketStatusLabel(status),
-                    ),
+                          : ticketStatusLabel(status);
+                      Future<void> onPressed() async {
+                        if (reopening) {
+                          final reason = await askReopenReason();
+                          if (reason == null || !mounted) return;
+                          await act(
+                            (r, ticket) => r.status(
+                              ticket,
+                              status,
+                              comment: reason,
+                            ),
+                            successMessage:
+                                'Звернення знову відкрито зі статусом «Нове».',
+                          );
+                          return;
+                        }
+                        if (await confirmAction(
+                          context,
+                          withdrawing
+                              ? 'Видалити звернення?'
+                              : 'Змінити статус?',
+                          withdrawing
+                              ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.'
+                              : ticketStatusLabel(status),
+                        )) {
+                          await act(
+                            (r, ticket) => r.status(
+                              ticket,
+                              status,
+                              comment: comment.text.trim().isEmpty
+                                  ? null
+                                  : comment.text,
+                            ),
+                            successMessage: withdrawing
+                                ? 'Звернення закрито.'
+                                : null,
+                          );
+                        }
+                      }
+
+                      if (withdrawing) {
+                        return FilledButton.tonalIcon(
+                          onPressed: busy ? null : onPressed,
+                          icon: const Icon(Icons.delete_outline),
+                          label: Text(label),
+                        );
+                      }
+                      return OutlinedButton(
+                        onPressed: busy ? null : onPressed,
+                        child: Text(label),
+                      );
+                    },
                   ),
                 if (role == 'developer')
                   DropdownButton<String>(

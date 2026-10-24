@@ -16,14 +16,15 @@ test('support lifecycle with required reopen comment and immutable history',asyn
  await cmd('developer','status_changed',{expectedVersion:1,status:'accepted'});
  await cmd('developer','status_changed',{expectedVersion:2,status:'in_progress'});
  await cmd('developer','status_changed',{expectedVersion:3,status:'done'});
- await assertFails(cmd('admin','status_changed',{expectedVersion:4,status:'accepted'}));
- await cmd('admin','status_changed',{expectedVersion:4,status:'accepted',comment:'Проблема залишилася після перевірки.'});
- await cmd('developer','status_changed',{expectedVersion:5,status:'rejected'});
- await cmd('admin','status_changed',{expectedVersion:6,status:'closed'});
- await cmd('admin','commented',{expectedVersion:7,comment:'Дякую за пояснення.'});
+ await assertFails(cmd('admin','status_changed',{expectedVersion:4,status:'new'}));
+ await cmd('admin','status_changed',{expectedVersion:4,status:'new',comment:'Проблема залишилася після перевірки.'});
+ await cmd('developer','status_changed',{expectedVersion:5,status:'accepted'});
+ await cmd('developer','status_changed',{expectedVersion:6,status:'rejected'});
+ await cmd('admin','status_changed',{expectedVersion:7,status:'closed'});
+ await cmd('admin','commented',{expectedVersion:8,comment:'Дякую за пояснення.'});
  const db=dbFor(env,'developer');
  assert.equal((await getDoc(doc(db,'supportTickets/ticket'))).data().status,'closed');
- assert.equal((await getDocs(query(collection(db,'supportTickets/ticket/history'),limit(100)))).size,8);
+ assert.equal((await getDocs(query(collection(db,'supportTickets/ticket/history'),limit(100)))).size,9);
  await assertFails(updateDoc(doc(db,'supportTickets/ticket/history/1'),{action:'commented'}));
  await assertFails(deleteDoc(doc(db,'supportTickets/ticket/comments/comment-5')));
 });
@@ -61,7 +62,7 @@ test('concurrent comments detect stale version and never silently overwrite',asy
 
 test('every support status edge matches the role transition table',async()=>{
  const statuses=['new','accepted','in_progress','done','rejected','closed'];
- const allowed={admin:{new:['closed'],done:['closed','accepted'],rejected:['closed','accepted'],closed:['accepted']},developer:{new:['accepted','rejected'],accepted:['in_progress','rejected'],in_progress:['done'],done:['closed','accepted'],rejected:['closed','accepted'],closed:['accepted']}};
+ const allowed={admin:{new:['closed'],done:['closed','new'],rejected:['closed','new'],closed:['new']},developer:{new:['accepted','rejected'],accepted:['in_progress','rejected'],in_progress:['done'],done:['closed','new'],rejected:['closed','new'],closed:['new']}};
  await created();const fixture=(await getDoc(doc(dbFor(env,'admin'),'supportTickets/ticket'))).data();
  for(const role of ['admin','developer'])for(const from of statuses)for(const to of statuses){
   const id=`${role}-${from}-${to}`;

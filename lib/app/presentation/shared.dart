@@ -104,61 +104,70 @@ class AppFrame extends ConsumerWidget {
             ? !profile.isDisabled
             : narrow && profile == null;
 
-    Widget topNav() => Wrap(
-          spacing: 8,
-          runSpacing: 4,
+    final publicNav = <Widget>[
+      const AppLink(to: '/', child: Text('Календар')),
+      const AppLink(to: '/schedule', child: Text('Розклад')),
+      const AppLink(to: '/rooms', child: Text('Локації')),
+      if (profile?.role != UserRole.developer)
+        AppLink(to: bookingPath, child: const Text('Подати заявку')),
+      const AppLink(
+        to: '/feedback',
+        child: Text('Зауваження та пропозиції'),
+      ),
+      const AppLink(to: '/contacts', child: Text('Контакти')),
+      const AppLink(to: '/help', child: Text('Інструкція')),
+    ];
+    final staffNav = <Widget>[
+      if (profile?.role == UserRole.admin && !profile!.isDisabled) ...[
+        _navBadge(
+          count: pendingCount,
+          child: const AppLink(
+            to: '/admin',
+            outlined: true,
+            icon: Icon(Icons.edit_calendar),
+            child: Text('Керувати подіями'),
+          ),
+        ),
+        const AppLink(
+          to: '/admin/users',
+          outlined: true,
+          child: Text('Користувачі'),
+        ),
+        _navBadge(
+          count: openTickets,
+          child: const AppLink(
+            to: '/support',
+            outlined: true,
+            child: Text('Звернення'),
+          ),
+        ),
+      ] else if (profile != null &&
+          !profile.isDisabled &&
+          profile.role == UserRole.organizer)
+        const AppLink(
+          to: '/my-bookings',
+          outlined: true,
+          icon: Icon(Icons.edit_calendar),
+          child: Text('Мої події'),
+        )
+      else if (profile?.role == UserRole.developer && !profile!.isDisabled)
+        _navBadge(
+          count: openTickets,
+          child: const AppLink(
+            to: '/support',
+            outlined: true,
+            child: Text('Звернення'),
+          ),
+        ),
+    ];
+    Widget topNav() => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const AppLink(to: '/', child: Text('Календар')),
-            const AppLink(to: '/schedule', child: Text('Розклад')),
-            const AppLink(to: '/rooms', child: Text('Локації')),
-            if (profile?.role != UserRole.developer)
-              AppLink(to: bookingPath, child: const Text('Подати заявку')),
-            const AppLink(
-              to: '/feedback',
-              child: Text('Зауваження та пропозиції'),
-            ),
-            if (profile?.role == UserRole.admin && !profile!.isDisabled) ...[
-              _navBadge(
-                count: pendingCount,
-                child: const AppLink(
-                  to: '/admin',
-                  outlined: true,
-                  icon: Icon(Icons.edit_calendar),
-                  child: Text('Керувати подіями'),
-                ),
-              ),
-              const AppLink(
-                to: '/admin/users',
-                outlined: true,
-                child: Text('Користувачі'),
-              ),
-              _navBadge(
-                count: openTickets,
-                child: const AppLink(
-                  to: '/support',
-                  outlined: true,
-                  child: Text('Звернення'),
-                ),
-              ),
-            ] else if (profile != null &&
-                !profile.isDisabled &&
-                profile.role == UserRole.organizer)
-              const AppLink(
-                to: '/my-bookings',
-                outlined: true,
-                icon: Icon(Icons.edit_calendar),
-                child: Text('Мої події'),
-              )
-            else if (profile?.role == UserRole.developer &&
-                !profile!.isDisabled)
-              _navBadge(
-                count: openTickets,
-                child: const AppLink(
-                  to: '/support',
-                  outlined: true,
-                  child: Text('Звернення'),
-                ),
-              ),
+            Wrap(spacing: 8, runSpacing: 4, children: publicNav),
+            if (staffNav.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 4, children: staffNav),
+            ],
           ],
         );
 
@@ -307,6 +316,14 @@ class AppFrame extends ConsumerWidget {
                   onTap: () => context.go('/support'),
                 ),
               ListTile(
+                title: const Text('Контакти'),
+                onTap: () => context.go('/contacts'),
+              ),
+              ListTile(
+                title: const Text('Інструкція'),
+                onTap: () => context.go('/help'),
+              ),
+              ListTile(
                 title: Text(session == null ? 'Увійти' : 'Мій профіль'),
                 onTap: () =>
                     context.go(session == null ? '/login' : '/account'),
@@ -449,6 +466,15 @@ class AppFrame extends ConsumerWidget {
                                 'Дача',
                                 style: TextStyle(fontSize: 13),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 8,
+                            children: const [
+                              AppLink(to: '/contacts', child: Text('Контакти')),
+                              AppLink(to: '/help', child: Text('Інструкція')),
                             ],
                           ),
                           const SizedBox(height: 16),

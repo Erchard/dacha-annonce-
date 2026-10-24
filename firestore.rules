@@ -372,10 +372,10 @@ service cloud.firestore {
         || (b.status == 'accepted' && n.status in ['in_progress','rejected'])
         || (b.status == 'in_progress' && n.status == 'done')
         || (b.status in ['done','rejected'] && n.status == 'closed')
-        || (b.status in ['done','rejected','closed'] && n.status == 'accepted')))
+        || (b.status in ['done','rejected','closed'] && n.status == 'new')))
         || (admin() && ((b.status == 'new' && n.status == 'closed')
           || (b.status in ['done','rejected'] && n.status == 'closed')
-          || (b.status in ['done','rejected','closed'] && n.status == 'accepted')));
+          || (b.status in ['done','rejected','closed'] && n.status == 'new')));
     }
     function ticketHistory(b,n,commentId) {
       return {'version':n.version,'action':n.lastAction,'actorId':request.auth.uid,'actorRole':role(),'at':request.time,
@@ -399,7 +399,7 @@ service cloud.firestore {
               || (n.lastAction == 'priority_changed' && role() == 'developer' && n.priority != b.priority && n.status == b.status && !commented && n.lastCommentId == b.lastCommentId)
               || (n.lastAction == 'status_changed' && n.priority == b.priority && ticketTransition(b,n)
                 && (n.lastCommentId == b.lastCommentId || commented)
-                && (!(n.status == 'accepted' && b.status in ['done','rejected','closed']) || commented)))));
+                && (!(n.status == 'new' && b.status in ['done','rejected','closed']) || commented)))));
     }
     function feedbackAuthor() {
       return request.auth != null && resource.data.createdBy == request.auth.uid;

@@ -9,6 +9,7 @@ import 'presentation/calendar_pages.dart';
 import 'presentation/auth_pages.dart';
 import 'presentation/booking_pages.dart';
 import 'presentation/admin_pages.dart';
+import 'presentation/info_pages.dart';
 import 'presentation/support_pages.dart';
 
 // Palette measured from fond.boyarka.site (Astra global colors).
@@ -189,6 +190,11 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
       ),
     ),
     GoRoute(path: '/rooms', builder: (context, state) => const RoomsPage()),
+    GoRoute(path: '/help', builder: (context, state) => const HelpPage()),
+    GoRoute(
+      path: '/contacts',
+      builder: (context, state) => const ContactsPage(),
+    ),
     GoRoute(
       path: '/events/:id',
       builder: (context, state) => EventPage(id: state.pathParameters['id']!),

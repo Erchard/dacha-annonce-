@@ -27,16 +27,16 @@ List<String> allowedTicketStatuses(String role, String status) =>
         'new' => ['accepted', 'rejected'],
         'accepted' => ['in_progress', 'rejected'],
         'in_progress' => ['done'],
-        'done' || 'rejected' => ['closed', 'accepted'],
-        'closed' => ['accepted'],
+        'done' || 'rejected' => ['closed', 'new'],
+        'closed' => ['new'],
         _ => [],
       }
     : role == 'admin'
     ? switch (status) {
         'new' => ['closed'],
-        'done' => ['closed', 'accepted'],
-        'rejected' => ['closed', 'accepted'],
-        'closed' => ['accepted'],
+        'done' => ['closed', 'new'],
+        'rejected' => ['closed', 'new'],
+        'closed' => ['new'],
         _ => [],
       }
     : [];
@@ -287,7 +287,7 @@ class SupportRepository {
       }
       if (action == 'status_changed' &&
           (!allowedTicketStatuses(role, old!['status']).contains(status) ||
-              status == 'accepted' &&
+              status == 'new' &&
                   ['done', 'rejected', 'closed'].contains(old['status']) &&
                   comment == null)) {
         throw const DomainException(ErrorCode.validation, field: 'status');

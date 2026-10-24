@@ -211,51 +211,52 @@ class ScheduleTable extends StatelessWidget {
     return '$count подій';
   }
 
-  Widget eventTitle(BuildContext context, PublicEvent event) => AppLink(
-    to: '/events/${Uri.encodeComponent(event.id)}',
-    style: TextButton.styleFrom(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      alignment: Alignment.centerLeft,
-    ),
-    child: Text(
-      event.title,
-      style: scheduleSerif(size: 18, color: scheduleGreen),
-    ),
+  Widget eventTitle(BuildContext context, PublicEvent event) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      AppLink(
+        to: '/events/${Uri.encodeComponent(event.id)}',
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.zero,
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          alignment: Alignment.centerLeft,
+        ),
+        child: Text(
+          event.title,
+          style: scheduleSerif(size: 18, color: scheduleGreen),
+        ),
+      ),
+      if (event.directions.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        DirectionChipWrap(directions: event.directions.take(3)),
+      ],
+    ],
   );
 
   int columnFlex(String heading) {
     if (heading.startsWith('Назва')) return 15;
-    if (heading.startsWith('Відповідальний')) return 14;
-    if (heading == 'Примітки') return 17;
-    if (heading == 'Дата') return 12;
-    if (heading == 'Час') return 9;
-    return 11;
+    if (heading.startsWith('Відповідальний')) return 12;
+    if (heading == 'Примітки') return 22;
+    if (heading == 'Дата') return 11;
+    if (heading == 'Час') return 8;
+    return 10;
   }
 
   Widget notesCell(PublicEvent event) {
     final text = event.notes.trim();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (text.isEmpty)
-          const Text('—', style: TextStyle(color: scheduleMuted))
-        else
-          Text(
-            text,
-            softWrap: true,
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1.35,
-              color: scheduleInk,
-            ),
-          ),
-        if (event.directions.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          DirectionChipWrap(directions: event.directions.take(3)),
-        ],
-      ],
+    if (text.isEmpty) {
+      return const Text('—', style: TextStyle(color: scheduleMuted));
+    }
+    return Text(
+      text,
+      softWrap: true,
+      overflow: TextOverflow.visible,
+      style: const TextStyle(
+        fontSize: 13,
+        height: 1.35,
+        color: scheduleInk,
+      ),
     );
   }
 
@@ -361,9 +362,9 @@ class ScheduleTable extends StatelessWidget {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 900),
+              constraints: const BoxConstraints(minWidth: 960),
               child: SizedBox(
-                width: MediaQuery.sizeOf(context).width.clamp(900, 1100),
+                width: MediaQuery.sizeOf(context).width.clamp(960, 1200),
                 child: Column(
                   children: [
                     _headerRow(),
@@ -381,11 +382,11 @@ class ScheduleTable extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              flex: 12,
+                              flex: columnFlex('Дата'),
                               child: padded(Text(dateCell(entry.key))),
                             ),
                             Expanded(
-                              flex: 9,
+                              flex: columnFlex('Час'),
                               child: padded(
                                 Text(
                                   timeLabel(entry.value[i]),
@@ -396,21 +397,21 @@ class ScheduleTable extends StatelessWidget {
                               ),
                             ),
                             Expanded(
-                              flex: 15,
+                              flex: columnFlex('Назва'),
                               child: padded(eventTitle(context, entry.value[i])),
                             ),
                             Expanded(
-                              flex: 11,
+                              flex: columnFlex('Локація'),
                               child: padded(
                                 Text(entry.value[i].roomNameSnapshot),
                               ),
                             ),
                             Expanded(
-                              flex: 14,
+                              flex: columnFlex('Відповідальний'),
                               child: padded(contact(entry.value[i])),
                             ),
                             Expanded(
-                              flex: 17,
+                              flex: columnFlex('Примітки'),
                               child: padded(notesCell(entry.value[i])),
                             ),
                           ],
@@ -436,9 +437,9 @@ class ScheduleTable extends StatelessWidget {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 900),
+            constraints: const BoxConstraints(minWidth: 960),
             child: SizedBox(
-              width: MediaQuery.sizeOf(context).width.clamp(900, 1100),
+              width: MediaQuery.sizeOf(context).width.clamp(960, 1200),
               child: Column(
                 children: [
                   _headerRow(),
@@ -486,7 +487,7 @@ class ScheduleTable extends StatelessWidget {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Expanded(
-                                            flex: 9,
+                                            flex: columnFlex('Час'),
                                             child: padded(
                                               Text(
                                                 timeLabel(entry.value[i]),
@@ -497,7 +498,7 @@ class ScheduleTable extends StatelessWidget {
                                             ),
                                           ),
                                           Expanded(
-                                            flex: 15,
+                                            flex: columnFlex('Назва'),
                                             child: padded(
                                               eventTitle(
                                                 context,
@@ -506,7 +507,7 @@ class ScheduleTable extends StatelessWidget {
                                             ),
                                           ),
                                           Expanded(
-                                            flex: 11,
+                                            flex: columnFlex('Локація'),
                                             child: padded(
                                               Text(
                                                 entry.value[i].roomNameSnapshot,
@@ -514,13 +515,13 @@ class ScheduleTable extends StatelessWidget {
                                             ),
                                           ),
                                           Expanded(
-                                            flex: 14,
+                                            flex: columnFlex('Відповідальний'),
                                             child: padded(
                                               contact(entry.value[i]),
                                             ),
                                           ),
                                           Expanded(
-                                            flex: 17,
+                                            flex: columnFlex('Примітки'),
                                             child: padded(
                                               notesCell(entry.value[i]),
                                             ),
@@ -600,17 +601,19 @@ class ScheduleTable extends StatelessWidget {
                   Text(event.roomNameSnapshot),
                   const SizedBox(height: 8),
                   contact(event),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Примітки / напрямки',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: scheduleMuted,
+                  if (event.notes.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Примітки',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: scheduleMuted,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  notesCell(event),
+                    const SizedBox(height: 4),
+                    notesCell(event),
+                  ],
                 ],
               ),
             ),

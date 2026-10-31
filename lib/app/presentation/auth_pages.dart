@@ -427,7 +427,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                              'Лист надіслано. Повторне надсилання доступне через хвилину.',
+                              'Лист надіслано. Перевірте скриньку й папку «Спам». '
+                              'Повтор через хвилину.',
                             ),
                           ),
                         );
@@ -436,7 +437,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                   ),
                   ActionButton(
                     label: 'Я підтвердив адресу — перевірити',
-                    outlined: false,
+                    outlined: true,
                     action: () => ref.read(authRepositoryProvider).reloadUser(),
                   ),
                 ],

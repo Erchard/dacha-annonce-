@@ -173,7 +173,10 @@ class AppFrame extends ConsumerWidget {
         );
 
     int bottomIndex() {
-      if (location.startsWith('/schedule')) return 1;
+      if (location.startsWith('/schedule') ||
+          location.startsWith('/archive')) {
+        return 1;
+      }
       if (location.startsWith('/rooms')) return 2;
       if (location.startsWith('/my-bookings') ||
           location.startsWith('/admin') ||

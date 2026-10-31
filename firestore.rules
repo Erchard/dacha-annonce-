@@ -140,16 +140,17 @@ service cloud.firestore {
       let bytes = d.get('coverImageBytes', null);
       let type = d.get('coverImageContentType', null);
       let name = d.get('coverImageFileName', null);
-      return (bytes == null && type == null && name == null)
+      return ([bytes,type,name] == [null,null,null])
         || (bytes is bytes && bytes.size() > 0 && bytes.size() <= 700000
           && type in ['image/jpeg','image/png','image/webp']
-          && name is string && text(name,1,160));
+          && text(name,1,160));
     }
     function validBooking(d) {
       let directions = d.get('directions',[]);
       let phone = d.get('contactPhone','');
       let start = d.startAt.toMillis();
       let end = d.endAt.toMillis();
+      let status = d.status;
       return d.keys().toSet().difference(['contactPhone','notes','directions','coverImageBytes','coverImageContentType','coverImageFileName'].toSet()) == ['organizerId','roomId','title','description','responsibleName','startAt','endAt','timeZone','status',
         'roomNameSnapshot','locationSnapshot','rejectionReason','cancellationReason','reviewedAt','reviewedBy',
         'cancelledAt','cancelledBy','occupancyBlockIds','version','lastAction','createdAt','updatedAt','createdBy','updatedBy','schemaVersion'].toSet()
@@ -157,26 +158,25 @@ service cloud.firestore {
         && text(d.responsibleName,0,80)
         && (phone == '' || (phone is string && phone.matches('^[+0-9() .-]{5,32}$')))
         && text(d.get('notes',''),0,500)
-        && coverOk(d)
         && directions is list && directions.size() <= 15
         && directions.toSet().size() == directions.size()
         && directions.hasOnly(['Емоційна підтримка','Екологія','Культура','Громадська активність','Освіта, просвіта','Толока','Благоустрій Дачі','Психологічна допомога','Майстер-клас','Клуб','Для людей старшого віку','Для дітей','Для молоді','Творчі зустрічі','Концерт'])
         && d.startAt is timestamp && d.endAt is timestamp && d.startAt < d.endAt
         && [start % 1800000,end % 1800000,d.startAt,d.endAt] == [0,0,timestamp.value(start),timestamp.value(end)]
         && end - start <= 21600000 && start >= 0
-        && d.status in ['pending','approved','rejected','cancelled']
+        && status in ['pending','approved','rejected','cancelled']
         && text(d.roomNameSnapshot,0,80) && text(d.locationSnapshot,0,160)
         && d.occupancyBlockIds == blockIds(d) && d.version is int && d.version >= 1
         && d.lastAction in ['create','edit','approve','reject','cancel','reschedule']
         && d.createdAt is timestamp && id(d.createdBy)
         && d.schemaVersion is int
         && [d.timeZone,d.updatedAt,d.updatedBy,d.schemaVersion] == ['Europe/Kyiv',request.time,request.auth.uid,1]
-        && (d.status == 'rejected' ? text(d.rejectionReason,3,1000) : d.rejectionReason == null)
-        && (d.status == 'cancelled' ? (d.cancellationReason == null || text(d.cancellationReason,0,1000))
+        && (status == 'rejected' ? text(d.rejectionReason,3,1000) : d.rejectionReason == null)
+        && (status == 'cancelled' ? (d.cancellationReason == null || text(d.cancellationReason,0,1000))
           && d.cancelledAt == request.time && d.cancelledBy == request.auth.uid
           : [d.cancellationReason,d.cancelledAt,d.cancelledBy] == [null,null,null])
-        && (d.status in ['approved','rejected'] ? d.reviewedAt is timestamp && id(d.reviewedBy)
-          : d.status == 'pending' ? [d.reviewedAt,d.reviewedBy] == [null,null]
+        && (status in ['approved','rejected'] ? d.reviewedAt is timestamp && id(d.reviewedBy)
+          : status == 'pending' ? [d.reviewedAt,d.reviewedBy] == [null,null]
           : ([d.reviewedAt,d.reviewedBy] == [null,null]) || (d.reviewedAt is timestamp && id(d.reviewedBy)));
     }
     function snapshotMatches(n) {
@@ -237,7 +237,8 @@ service cloud.firestore {
     }
     function mirrors(b,n,bookingId) {
       let p = /databases/$(database)/documents/publicEvents/$(bookingId);
-      // Full booking validation stays in the booking rule.
+      // Core fields are validated on booking; optional cover is validated on mandatory history.
+      // The new history version makes cover validation unavoidable in the same atomic write.
       // Exact history/projection validation is enforced by their reciprocal rules.
       return getAfter(/databases/$(database)/documents/bookings/$(bookingId)/history/$(string(n.version))).data.version == n.version
         && (n.status == 'approved' ? getAfter(p).data.bookingVersion == n.version : !existsAfter(p));
@@ -318,7 +319,7 @@ service cloud.firestore {
     function historyMatches(bookingId,version,h) {
       let b = beforeBooking(bookingId);
       let n = getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data;
-      return version == string(h.version) && changedBooking(b,n) && h == historyData(b,n);
+      return version == string(h.version) && changedBooking(b,n) && coverOk(n) && h == historyData(b,n);
     }
     match /bookings/{bookingId}/history/{version} {
       allow get: if ownerOrAdmin(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
@@ -368,7 +369,7 @@ service cloud.firestore {
     }
     function ticketTransition(b,n) {
       let developer = role() == 'developer';
-      return (developer && ((b.status == 'new' && n.status in ['accepted','rejected'])
+      return (developer && ((b.status == 'new' && n.status in ['accepted','in_progress','rejected'])
         || (b.status == 'accepted' && n.status in ['in_progress','rejected'])
         || (b.status == 'in_progress' && n.status == 'done')
         || (b.status in ['done','rejected'] && n.status == 'closed')

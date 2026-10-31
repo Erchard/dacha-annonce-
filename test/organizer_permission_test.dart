@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'package:dacha_annonce/app/app.dart';
 import 'package:dacha_annonce/app/data/app_repository.dart';
 import 'package:dacha_annonce/app/presentation/admin_pages.dart';
@@ -63,7 +64,7 @@ void main() {
             sessionProvider.overrideWith((ref) => Stream.value(null)),
             profileProvider.overrideWith((ref) => Stream.value(null)),
           ],
-          child: MaterialApp(theme: dachaTheme(), home: const AdminUsersPage()),
+          child: MaterialApp.router(theme: dachaTheme(), routerConfig: GoRouter(routes: [GoRoute(path: '/', builder: (_,_) => const AdminUsersPage())])),
         ),
       );
       await tester.pumpAndSettle();

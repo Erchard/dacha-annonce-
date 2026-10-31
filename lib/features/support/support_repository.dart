@@ -24,7 +24,7 @@ const maxAttachmentsPerTicket = 5;
 List<String> allowedTicketStatuses(String role, String status) =>
     role == 'developer'
     ? switch (status) {
-        'new' => ['accepted', 'rejected'],
+        'new' => ['in_progress', 'rejected'],
         'accepted' => ['in_progress', 'rejected'],
         'in_progress' => ['done'],
         'done' || 'rejected' => ['closed', 'new'],
@@ -62,9 +62,7 @@ class Ticket {
 
   Ticket(this.id, Map<String, dynamic> data) {
     // Ignore unknown keys so older/newer documents still open in the UI.
-    final f = Fields({
-      for (final key in _keys) key: data[key],
-    }, _keys);
+    final f = Fields({for (final key in _keys) key: data[key]}, _keys);
     type = f.value<String>('type');
     title = checkedText(f.value<String>('title'), 'title', 3, 160);
     body = checkedText(f.value<String>('body'), 'body', 10, 10000);
@@ -189,14 +187,17 @@ class SupportRepository {
   );
   Future<void> priority(Ticket t, String priority) =>
       _write(t.id, t.version, 'priority_changed', priority: priority);
-  Future<void> editContent(Ticket t, {required String title, required String body}) =>
-      _write(
-        t.id,
-        t.version,
-        'edited',
-        title: checkedText(title.trim(), 'title', 3, 160),
-        body: checkedText(body.trim(), 'body', 10, 10000),
-      );
+  Future<void> editContent(
+    Ticket t, {
+    required String title,
+    required String body,
+  }) => _write(
+    t.id,
+    t.version,
+    'edited',
+    title: checkedText(title.trim(), 'title', 3, 160),
+    body: checkedText(body.trim(), 'body', 10, 10000),
+  );
 
   Future<void> addAttachment(
     String ticketId, {
@@ -270,9 +271,9 @@ class SupportRepository {
       }
       final role = profile['role'] as String;
       final staff = role == 'admin' || role == 'developer';
-      final canCreateFeedback =
-          role == 'organizer' || role == 'admin';
-      if (!staff && !(old == null && action == 'created' && canCreateFeedback)) {
+      final canCreateFeedback = role == 'organizer' || role == 'admin';
+      if (!staff &&
+          !(old == null && action == 'created' && canCreateFeedback)) {
         throw const DomainException(ErrorCode.permissionDenied);
       }
       if ((old?['version'] ?? 0) != version) {
@@ -321,10 +322,7 @@ class SupportRepository {
           'schemaVersion': 1,
           'lastCommentId': null,
         },
-        if (action == 'edited') ...{
-          'title': title,
-          'body': body,
-        },
+        if (action == 'edited') ...{'title': title, 'body': body},
         'status': ?status,
         'priority': ?priority,
         'updatedBy': uid,

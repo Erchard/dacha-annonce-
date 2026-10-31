@@ -107,6 +107,7 @@ class AppFrame extends ConsumerWidget {
     final publicNav = <Widget>[
       const AppLink(to: '/', child: Text('Календар')),
       const AppLink(to: '/schedule', child: Text('Розклад')),
+      const AppLink(to: '/archive', child: Text('Архів подій')),
       const AppLink(to: '/rooms', child: Text('Локації')),
       if (profile?.role != UserRole.developer)
         AppLink(to: bookingPath, child: const Text('Подати заявку')),
@@ -316,6 +317,10 @@ class AppFrame extends ConsumerWidget {
                   onTap: () => context.go('/support'),
                 ),
               ListTile(
+                title: const Text('Архів подій'),
+                onTap: () => context.go('/archive'),
+              ),
+              ListTile(
                 title: const Text('Контакти'),
                 onTap: () => context.go('/contacts'),
               ),
@@ -473,6 +478,10 @@ class AppFrame extends ConsumerWidget {
                             spacing: 16,
                             runSpacing: 8,
                             children: const [
+                              AppLink(
+                                to: '/archive',
+                                child: Text('Архів подій'),
+                              ),
                               AppLink(to: '/contacts', child: Text('Контакти')),
                               AppLink(to: '/help', child: Text('Інструкція')),
                             ],

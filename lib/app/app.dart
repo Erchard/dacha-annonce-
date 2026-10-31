@@ -189,6 +189,15 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
         roomId: state.uri.queryParameters['room'],
       ),
     ),
+    GoRoute(
+      path: '/archive',
+      builder: (context, state) => CalendarPage(
+        pagePath: '/archive',
+        view: state.uri.queryParameters['view'],
+        date: state.uri.queryParameters['date'],
+        roomId: state.uri.queryParameters['room'],
+      ),
+    ),
     GoRoute(path: '/rooms', builder: (context, state) => const RoomsPage()),
     GoRoute(path: '/help', builder: (context, state) => const HelpPage()),
     GoRoute(

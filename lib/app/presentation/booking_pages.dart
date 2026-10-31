@@ -493,7 +493,8 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
           action = BookingAction.edit;
         }
         final draft = BookingDraft(
-          roomId: action == BookingAction.edit &&
+          roomId:
+              action == BookingAction.edit &&
                   booking.status == BookingStatus.approved &&
                   roomOrTimeChanged &&
                   !booking.draft.interval.start.isAfter(nowUtc)
@@ -1286,7 +1287,7 @@ class _BookingDetailPageState extends ConsumerState<BookingDetailPage> {
                       bytes: cover.bytes,
                       fileName: cover.fileName,
                       contentType: cover.contentType,
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
@@ -1347,9 +1348,8 @@ class _BookingDetailPageState extends ConsumerState<BookingDetailPage> {
                       (admin || publisher) &&
                       BookingService.seriesPrefix(booking.id) != null)
                     OutlinedButton(
-                      onPressed: () => context.go(
-                        '/bookings/${booking.id}/edit?series=1',
-                      ),
+                      onPressed: () =>
+                          context.go('/bookings/${booking.id}/edit?series=1'),
                       child: const Text('Редагувати всю серію'),
                     ),
                   if (active &&

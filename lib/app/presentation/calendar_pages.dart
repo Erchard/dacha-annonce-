@@ -1,6 +1,6 @@
 import 'schedule_table.dart';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Page;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -82,7 +82,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         ? 'Некоректна дата в посиланні.'
         : null;
     focus = parsed == null ? now : civil(parsed);
-    view = widget.pagePath == '/schedule'
+    view = isSchedule
         ? (const {'day', 'week', 'month'}.contains(widget.view)
               ? widget.view!
               : 'week')
@@ -91,7 +91,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         : 'month';
   }
 
-  ({DateTime start, DateTime end}) window() {
+  ({DateTime start, DateTime end}) periodWindow() {
     final location = tz.getLocation('Europe/Kyiv');
     DateTime at(int year, int month, int day) =>
         tz.TZDateTime(location, year, month, day).toUtc();
@@ -116,6 +116,27 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
       start: at(focus.year, focus.month, 1),
       end: at(focus.year, focus.month + 1, 1),
     );
+  }
+
+  ({DateTime start, DateTime end}) window() {
+    final range = periodWindow();
+    if (!isSchedule) return range;
+    final now = TimeZoneService().toKyiv(DateTime.now());
+    final today = tz.TZDateTime(
+      tz.getLocation('Europe/Kyiv'),
+      now.year,
+      now.month,
+      now.day,
+    ).toUtc();
+    return isArchive
+        ? (
+            start: range.start,
+            end: range.end.isAfter(today) ? today : range.end,
+          )
+        : (
+            start: range.start.isBefore(today) ? today : range.start,
+            end: range.end,
+          );
   }
 
   @override
@@ -160,15 +181,17 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     try {
       final repo = ref.read(repositoryProvider);
       final range = window();
-      final page = await repo.listRange(
-        range.start,
-        range.end,
-        PageRequest(after: reset ? null : next),
-        roomId: widget.roomId,
-        directions: isSchedule
-            ? (selectedDirections.toList()..sort())
-            : const [],
-      );
+      final page = !range.start.isBefore(range.end)
+          ? Page<PublicEvent>([], null)
+          : await repo.listRange(
+              range.start,
+              range.end,
+              PageRequest(after: reset ? null : next),
+              roomId: widget.roomId,
+              directions: isSchedule
+                  ? (selectedDirections.toList()..sort())
+                  : const [],
+            );
       final roomPage = rooms.isEmpty
           ? await repo.listRooms(PageRequest(limit: 100))
           : null;
@@ -235,7 +258,8 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     );
   }
 
-  bool get isSchedule => widget.pagePath == '/schedule';
+  bool get isArchive => widget.pagePath == '/archive';
+  bool get isSchedule => widget.pagePath == '/schedule' || isArchive;
   bool get lockedRoom => isSchedule && widget.roomId != null;
   String? lockedRoomName() {
     final id = widget.roomId;
@@ -264,10 +288,31 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
           ];
     return AppFrame(
       backgroundColor: isSchedule ? scheduleCream : null,
-      title: isSchedule ? 'Розклад' : 'Календар',
+      title: isArchive
+          ? 'Архів подій'
+          : isSchedule
+          ? 'Розклад'
+          : 'Календар',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (isSchedule) ...[
+            Text(
+              isArchive
+                  ? 'Тут минулі події (до сьогодні). Повна сітка за будь-який період — у Календарі.'
+                  : 'Тут лише майбутні події (від сьогодні). Минулі — в Архіві; уся історія — у Календарі.',
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: AppLink(
+                to: Uri(
+                  path: isArchive ? '/schedule' : '/archive',
+                  queryParameters: {'room': ?widget.roomId},
+                ).toString(),
+                child: Text(isArchive ? 'До майбутніх подій' : 'Архів подій'),
+              ),
+            ),
+          ],
           if (isSchedule)
             ScheduleBrandHeader(
               view: view,
@@ -275,7 +320,10 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               roomLabel: lockedRoom ? lockedRoomName() : null,
             )
           else
-            const Text('Зустрічі, події та спільні справи. Час — Київ.'),
+            const Text(
+              'Зустрічі, події та спільні справи. Час — Київ. '
+              'На телефоні зручніше дивитися місяць; день відкривається з клітинки.',
+            ),
           const SizedBox(height: 20),
           Wrap(
             spacing: 8,
@@ -370,9 +418,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               final sideBySide = constraints.maxWidth >= 720;
               final locationField = lockedRoom
                   ? InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Локація',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Локація'),
                       child: Row(
                         children: [
                           Expanded(
@@ -385,11 +431,8 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => navigate(
-                              focus,
-                              room: null,
-                              changeRoom: true,
-                            ),
+                            onPressed: () =>
+                                navigate(focus, room: null, changeRoom: true),
                             child: const Text('Усі локації'),
                           ),
                         ],
@@ -570,31 +613,32 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                     MediaQuery.textScalerOf(context).scale(1) <= 1.4;
                 if (isSchedule) {
                   final shown = visibleEvents();
-                  return ScheduleTable(
-                    events: shown,
-                    wide: wide,
-                    view: view,
-                  );
+                  return ScheduleTable(events: shown, wide: wide, view: view);
                 }
                 final shown = visibleEvents();
                 return Column(
                   children: [
+                    if (!wide && (view == 'month' || view == 'week'))
+                      _CompactCalendar(
+                        focus: focus,
+                        week: view == 'week',
+                        events: shown,
+                        onDay: (date) => navigate(date, nextView: 'day'),
+                      ),
                     if (wide && view == 'month')
                       _MonthGrid(
                         month: DateTime(focus.year, focus.month),
                         events: shown,
                         pagePath: widget.pagePath,
-                        onEventTap: (event) =>
-                            showEventPreview(context, event),
+                        onEventTap: (event) => showEventPreview(context, event),
                       ),
                     if (wide && view == 'week')
                       _WeekGrid(
                         focus: focus,
                         events: shown,
-                        onEventTap: (event) =>
-                            showEventPreview(context, event),
+                        onEventTap: (event) => showEventPreview(context, event),
                       ),
-                    if (!wide || view == 'day' || view == 'list')
+                    if (view == 'day' || view == 'list')
                       for (final event in shown)
                         Card(
                           child: ListTile(
@@ -1023,7 +1067,7 @@ class _EventPageState extends ConsumerState<EventPage> {
                     bytes: cover.bytes,
                     fileName: cover.fileName,
                     contentType: cover.contentType,
-                    fit: BoxFit.cover,
+                    fit: BoxFit.contain,
                   ),
                 ),
               ),
@@ -1070,7 +1114,7 @@ class _EventPageState extends ConsumerState<EventPage> {
                     );
                   },
                   icon: const Icon(Icons.download),
-                  label: const Text('Завантажити .ics'),
+                  label: const Text('До Apple / Outlook календаря'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () =>
@@ -1169,10 +1213,14 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (error != null) Problem(error!, retry: () {
-          next = null;
-          load();
-        }),
+        if (error != null)
+          Problem(
+            error!,
+            retry: () {
+              next = null;
+              load();
+            },
+          ),
         if (busy) const LinearProgressIndicator(),
         if (!busy && error == null && rooms.isEmpty)
           const Text('Локації ще не додані.'),
@@ -1214,15 +1262,14 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 4),
                                 child: InkWell(
-                                  onTap: () =>
-                                      showEventPreview(context, event),
+                                  onTap: () => showEventPreview(context, event),
                                   child: Text(
                                     '${localDate(event.interval.start)} · ${event.title}',
                                     style: TextStyle(
                                       fontSize: 13,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
                                     ),
                                   ),
                                 ),
@@ -1258,4 +1305,177 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
       ],
     ),
   );
+}
+
+class _CompactCalendar extends StatelessWidget {
+  const _CompactCalendar({
+    required this.focus,
+    required this.week,
+    required this.events,
+    required this.onDay,
+  });
+  final DateTime focus;
+  final bool week;
+  final List<PublicEvent> events;
+  final ValueChanged<DateTime> onDay;
+
+  List<PublicEvent> eventsOn(DateTime date) {
+    final start = tz.TZDateTime(
+      tz.getLocation('Europe/Kyiv'),
+      date.year,
+      date.month,
+      date.day,
+    ).toUtc();
+    final end = tz.TZDateTime(
+      tz.getLocation('Europe/Kyiv'),
+      date.year,
+      date.month,
+      date.day + 1,
+    ).toUtc();
+    return events
+        .where(
+          (e) =>
+              e.interval.start.isBefore(end) && e.interval.end.isAfter(start),
+        )
+        .toList()
+      ..sort((a, b) => a.interval.start.compareTo(b.interval.start));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final first = week
+        ? DateTime(focus.year, focus.month, focus.day - focus.weekday + 1)
+        : DateTime(focus.year, focus.month, 1);
+    final offset = week ? 0 : first.weekday - 1;
+    final days = week ? 7 : DateTime(focus.year, focus.month + 1, 0).day;
+    final count = ((offset + days + 6) ~/ 7) * 7;
+    final zone = TimeZoneService();
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        const Text(
+          'Місяць як у календарі: у клітинці — назви подій. Натисніть день для повного списку.',
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            for (final label in ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'])
+              Expanded(
+                child: Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisExtent: week ? 110 : 96,
+          ),
+          itemCount: count,
+          itemBuilder: (context, index) {
+            final day = index - offset;
+            if (day < 0 || day >= days) return const SizedBox.shrink();
+            final date = DateTime(first.year, first.month, first.day + day);
+            final dayEvents = eventsOn(date);
+            final now = zone.toKyiv(DateTime.now());
+            final today =
+                date.year == now.year &&
+                date.month == now.month &&
+                date.day == now.day;
+            final past = _isPastCalendarDay(date);
+            final shown = dayEvents.take(2).toList();
+            final more = dayEvents.length - shown.length;
+            return Semantics(
+              label: '${date.day}.${date.month}.${date.year}, '
+                  'подій: ${dayEvents.length}',
+              button: true,
+              child: InkWell(
+                onTap: () => onDay(date),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  margin: const EdgeInsets.all(1.5),
+                  padding: const EdgeInsets.fromLTRB(3, 4, 3, 3),
+                  decoration: BoxDecoration(
+                    color: today
+                        ? scheme.primaryContainer
+                        : past
+                        ? scheme.surfaceContainerHighest.withValues(alpha: 0.45)
+                        : scheme.surface,
+                    border: Border.all(
+                      color: today
+                          ? scheme.primary
+                          : scheme.outlineVariant,
+                      width: today ? 1.5 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '${date.day}',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: today
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          color: past ? Colors.grey : scheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      for (final event in shown)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 2,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              event.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 9,
+                                height: 1.1,
+                                color: scheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (more > 0)
+                        Text(
+                          '+$more',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.primary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
 }

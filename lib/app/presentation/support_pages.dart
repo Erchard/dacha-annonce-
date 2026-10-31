@@ -18,7 +18,7 @@ import 'support_draft.dart';
 
 String ticketStatusLabel(String value) => switch (value) {
   'new' => 'Нове',
-  'accepted' => 'Прийнято',
+  'accepted' => 'Очікує роботи',
   'in_progress' => 'У роботі',
   'done' => 'Виконано',
   'rejected' => 'Відхилено',
@@ -166,8 +166,9 @@ class _SupportPageState extends ConsumerState<SupportPage> {
                         onPressed: busy
                             ? null
                             : () async {
-                                final messenger =
-                                    ScaffoldMessenger.of(this.context);
+                                final messenger = ScaffoldMessenger.of(
+                                  this.context,
+                                );
                                 if (!await confirmAction(
                                   this.context,
                                   'Видалити звернення?',
@@ -248,12 +249,9 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
       error = null;
     });
     try {
-      await ref.read(supportRepositoryProvider).create(
-            id,
-            type: 'feedback',
-            title: title.text,
-            body: body.text,
-          );
+      await ref
+          .read(supportRepositoryProvider)
+          .create(id, type: 'feedback', title: title.text, body: body.text);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -272,44 +270,44 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
 
   @override
   Widget build(BuildContext context) => AppFrame(
-        title: 'Зауваження та пропозиції',
-        child: Form(
-          key: form,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Опишіть зауваження або ідею покращення. Після збереження звернення побачать адміністрація та розробник.',
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: title,
-                maxLength: 160,
-                decoration: const InputDecoration(labelText: 'Тема'),
-                validator: (v) => (v?.trim().runes.length ?? 0) < 3
-                    ? 'Щонайменше 3 символи'
-                    : null,
-              ),
-              TextFormField(
-                controller: body,
-                maxLength: 10000,
-                minLines: 5,
-                maxLines: 12,
-                decoration: const InputDecoration(labelText: 'Опис'),
-                validator: (v) => (v?.trim().runes.length ?? 0) < 10
-                    ? 'Щонайменше 10 символів'
-                    : null,
-              ),
-              if (error != null) Problem(error!),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: busy ? null : submit,
-                child: Text(busy ? 'Надсилання…' : 'Надіслати'),
-              ),
-            ],
+    title: 'Зауваження та пропозиції',
+    child: Form(
+      key: form,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Опишіть зауваження або ідею покращення. Після збереження звернення побачать адміністрація та розробник.',
           ),
-        ),
-      );
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: title,
+            maxLength: 160,
+            decoration: const InputDecoration(labelText: 'Тема'),
+            validator: (v) => (v?.trim().runes.length ?? 0) < 3
+                ? 'Щонайменше 3 символи'
+                : null,
+          ),
+          TextFormField(
+            controller: body,
+            maxLength: 10000,
+            minLines: 5,
+            maxLines: 12,
+            decoration: const InputDecoration(labelText: 'Опис'),
+            validator: (v) => (v?.trim().runes.length ?? 0) < 10
+                ? 'Щонайменше 10 символів'
+                : null,
+          ),
+          if (error != null) Problem(error!),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: busy ? null : submit,
+            child: Text(busy ? 'Надсилання…' : 'Надіслати'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class NewTicketPage extends ConsumerStatefulWidget {
@@ -573,11 +571,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
           sideError ??= e;
         }
         try {
-          final a = await repo.entries(
-            widget.id,
-            'attachments',
-            PageRequest(),
-          );
+          final a = await repo.entries(widget.id, 'attachments', PageRequest());
           nextAttachments = a.items;
         } catch (e) {
           sideError ??= e;
@@ -614,9 +608,8 @@ class _TicketPageState extends ConsumerState<TicketPage> {
       comment.clear();
       await load();
       if (mounted && successMessage != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(successMessage)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(successMessage)));
       }
     } catch (e) {
       if (mounted) setState(() => error = e);
@@ -761,6 +754,22 @@ class _TicketPageState extends ConsumerState<TicketPage> {
             Text(
               '${typeLabel(t.type)} · ${ticketStatusLabel(t.status)} · ${priorityLabel(t.priority)}',
             ),
+            const SizedBox(height: 8),
+            Text(
+              switch (t.status) {
+                'accepted' =>
+                  '«Очікує роботи» означає, що розробник прийняв звернення. Це не схвалення події. Після перевірки натисніть «Закрити».',
+                'done' =>
+                  'Роботу позначено виконаною. Якщо все гаразд — натисніть «Закрити». Якщо ні — «Відкрити повторно».',
+                'new' =>
+                  role == 'admin'
+                      ? 'Нове звернення. Помилкове можна прибрати кнопкою «Видалити». Команда «Закрити» з’явиться після виконання.'
+                      : 'Нове звернення чекає на розробника.',
+                _ =>
+                  'Статус у рядку вище — поточний стан. Кнопки нижче — дії (наприклад «Закрити»), а не назви статусів.',
+              },
+              style: const TextStyle(fontSize: 13),
+            ),
             const SizedBox(height: 12),
             Text(t.body),
             const SizedBox(height: 16),
@@ -778,8 +787,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                       child: CopyFriendlyImage(
                         bytes: bytes,
                         fileName: '${a.data['fileName'] ?? 'photo.jpg'}',
-                        contentType:
-                            '${a.data['contentType'] ?? 'image/jpeg'}',
+                        contentType: '${a.data['contentType'] ?? 'image/jpeg'}',
                         width: 140,
                         height: 140,
                       ),
@@ -803,8 +811,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
               maxLength: 5000,
               decoration: const InputDecoration(
                 labelText: 'Коментар',
-                helperText:
-                    'Звичайні уточнення. Причину повторного відкриття запитає окреме вікно кнопки «Відкрити повторно».',
+                helperText: 'Звичайні уточнення. Причину повторного відкриття запитає окреме вікно кнопки «Відкрити повторно».',
               ),
             ),
             if (role == 'admin' && t.status == 'new')
@@ -833,7 +840,9 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                             final titleCtrl = TextEditingController(
                               text: t.title,
                             );
-                            final bodyCtrl = TextEditingController(text: t.body);
+                            final bodyCtrl = TextEditingController(
+                              text: t.body,
+                            );
                             final saved = await showDialog<bool>(
                               context: context,
                               builder: (context) => AlertDialog(
@@ -893,26 +902,35 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                 for (final status in allowedTicketStatuses(role, t.status))
                   Builder(
                     builder: (context) {
-                      final withdrawing = role == 'admin' &&
+                      final withdrawing =
+                          role == 'admin' &&
                           t.status == 'new' &&
                           status == 'closed';
-                      final reopening = status == 'new' &&
+                      final reopening =
+                          status == 'new' &&
                           ['done', 'rejected', 'closed'].contains(t.status);
                       final label = withdrawing
                           ? 'Видалити'
                           : reopening
                           ? 'Відкрити повторно'
+                          : status == 'closed'
+                          ? 'Закрити'
+                          : status == 'accepted'
+                          ? 'Прийняти в роботу'
+                          : status == 'in_progress'
+                          ? 'Взяти в роботу'
+                          : status == 'done'
+                          ? 'Позначити виконаним'
+                          : status == 'rejected'
+                          ? 'Відхилити'
                           : ticketStatusLabel(status);
                       Future<void> onPressed() async {
                         if (reopening) {
                           final reason = await askReopenReason();
                           if (reason == null || !mounted) return;
                           await act(
-                            (r, ticket) => r.status(
-                              ticket,
-                              status,
-                              comment: reason,
-                            ),
+                            (r, ticket) =>
+                                r.status(ticket, status, comment: reason),
                             successMessage:
                                 'Звернення знову відкрито зі статусом «Нове».',
                           );
@@ -922,10 +940,14 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                           context,
                           withdrawing
                               ? 'Видалити звернення?'
+                              : status == 'closed'
+                              ? 'Закрити звернення?'
                               : 'Змінити статус?',
                           withdrawing
                               ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.'
-                              : ticketStatusLabel(status),
+                              : status == 'closed'
+                              ? 'Після перевірки звернення можна закрити. Статус стане «Закрито».'
+                              : label,
                         )) {
                           await act(
                             (r, ticket) => r.status(
@@ -993,13 +1015,16 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text([
-                        c.data['authorRole'] == 'admin'
-                            ? 'Адміністрація'
-                            : 'Розробник',
-                        if (supportTimestamp(c.data['createdAt']) case final at?)
-                          '${localDate(at)} ${localTime(at)}',
-                      ].join(' · ')),
+                      Text(
+                        [
+                          c.data['authorRole'] == 'admin'
+                              ? 'Адміністрація'
+                              : 'Розробник',
+                          if (supportTimestamp(c.data['createdAt'])
+                              case final at?)
+                            '${localDate(at)} ${localTime(at)}',
+                        ].join(' · '),
+                      ),
                       const SizedBox(height: 8),
                       Text('${c.data['body'] ?? ''}'),
                     ],

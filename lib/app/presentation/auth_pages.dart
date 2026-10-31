@@ -25,7 +25,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final email = TextEditingController(),
       password = TextEditingController(),
       name = TextEditingController();
-  bool register = false, busy = false, rememberMe = true;
+  bool register = false, busy = false, rememberMe = true, showPassword = false;
   String? error;
   @override
   void initState() {
@@ -66,7 +66,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         await auth.signIn(email.text, password.text);
       }
       TextInput.finishAutofillContext(shouldSave: rememberMe);
-      if (mounted) context.go(register ? '/account' : destination);
+      if (mounted) {
+        context.go(
+          register ? '/account?registered=1' : destination,
+        );
+      }
     } catch (e) {
       if (mounted) setState(() => error = errorMessage(e));
     } finally {
@@ -130,8 +134,26 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 if (!widget.resetOnly)
                   TextFormField(
                     controller: password,
-                    decoration: const InputDecoration(labelText: 'Пароль'),
-                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'Пароль',
+                      helperText:
+                          'Натисніть іконку ока справа, щоб показати або сховати пароль.',
+                      suffixIcon: IconButton(
+                        tooltip: showPassword
+                            ? 'Приховати пароль'
+                            : 'Показати пароль',
+                        iconSize: 26,
+                        onPressed: () =>
+                            setState(() => showPassword = !showPassword),
+                        icon: Icon(
+                          showPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    obscureText: !showPassword,
                     autofillHints: [
                       if (register)
                         AutofillHints.newPassword
@@ -243,6 +265,7 @@ class AccountPage extends ConsumerStatefulWidget {
 class _AccountPageState extends ConsumerState<AccountPage> {
   final name = TextEditingController();
   DateTime? sentAt;
+  bool editingName = false;
   @override
   void dispose() {
     name.dispose();
@@ -282,14 +305,40 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         ),
       );
     }
+    final justRegistered =
+        GoRouterState.of(context).uri.queryParameters['registered'] == '1';
     return AppFrame(
       title: user == null ? 'Завершити реєстрацію' : 'Мій профіль',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Тут можна змінити відображуване ім’я, перевірити пошту й вийти з сайту.',
-          ),
+          if (justRegistered) ...[
+            Card(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Обліковий запис створено',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Підтвердіть електронну адресу за посиланням у листі. '
+                      'Для самостійного розміщення подій дочекайтесь затвердження адміністратора.',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ] else
+            const Text('Тут показано стан вашого облікового запису.'),
           const SizedBox(height: 16),
           if (user != null)
             Text(
@@ -306,7 +355,28 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             const Text(
               'Вхід успішний, але ім’я ще не збережене. Укажіть його нижче.',
             ),
-          if (user?.isDisabled != true) ...[
+          if (user != null && !user.isDisabled) ...[
+            const SizedBox(height: 12),
+            if (!justRegistered)
+              const Text(
+                'Реєстрацію завершено. Ви увійшли у свій обліковий запис.',
+              ),
+            if (user.role.name == 'organizer' && !user.canPublish)
+              const Text(
+                'Для самостійного розміщення подій чекайте на затвердження адміністратора.',
+              ),
+            if (user.role.name == 'admin' || user.canPublish)
+              const Text('Ви можете самостійно публікувати події.'),
+            if (!editingName)
+              TextButton(
+                onPressed: () {
+                  name.text = user.displayName;
+                  setState(() => editingName = true);
+                },
+                child: const Text('Змінити ім’я'),
+              ),
+          ],
+          if (user?.isDisabled != true && (user == null || editingName)) ...[
             const SizedBox(height: 20),
             SizedBox(
               width: 460,
@@ -331,7 +401,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           Text(
             auth.emailVerified
                 ? 'Електронну адресу підтверджено — можна подавати заявки.'
-                : 'Підтвердьте електронну адресу, щоб подавати заявки на події.',
+                : 'Обліковий запис уже створений. Щоб подавати заявки, підтвердьте адресу за посиланням у листі. Якщо листа немає, перевірте адресу і спам або зверніться до адміністратора. Доставка листа може затримуватися.',
           ),
           if (!auth.emailVerified)
             Padding(
@@ -365,8 +435,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                     },
                   ),
                   ActionButton(
-                    label: 'Я підтвердив адресу',
-                    outlined: true,
+                    label: 'Я підтвердив адресу — перевірити',
+                    outlined: false,
                     action: () => ref.read(authRepositoryProvider).reloadUser(),
                   ),
                 ],

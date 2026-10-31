@@ -252,11 +252,7 @@ class ScheduleTable extends StatelessWidget {
       text,
       softWrap: true,
       overflow: TextOverflow.visible,
-      style: const TextStyle(
-        fontSize: 13,
-        height: 1.35,
-        color: scheduleInk,
-      ),
+      style: const TextStyle(fontSize: 13, height: 1.35, color: scheduleInk),
     );
   }
 
@@ -279,7 +275,9 @@ class ScheduleTable extends StatelessWidget {
             phone.isEmpty ? 'Контакт уточнюється' : phone,
             style: TextStyle(
               fontSize: 13,
-              color: phone.isEmpty ? scheduleMuted : scheduleInk.withValues(alpha: 0.75),
+              color: phone.isEmpty
+                  ? scheduleMuted
+                  : scheduleInk.withValues(alpha: 0.75),
             ),
           ),
         ] else if (phone.isNotEmpty) ...[
@@ -300,7 +298,11 @@ class ScheduleTable extends StatelessWidget {
     final byDay = groups();
     if (byDay.isEmpty) return const SizedBox.shrink();
     if (!wide) return _narrow(context, byDay);
-    return view == 'day' ? _wideDay(context, byDay) : _wideWeek(context, byDay);
+    return LayoutBuilder(
+      builder: (context, constraints) => view == 'day'
+          ? _wideDay(context, byDay, constraints.maxWidth)
+          : _wideWeek(context, byDay, constraints.maxWidth),
+    );
   }
 
   Widget _headerRow() => Container(
@@ -329,6 +331,7 @@ class ScheduleTable extends StatelessWidget {
   Widget _wideDay(
     BuildContext context,
     Map<DateTime, List<PublicEvent>> byDay,
+    double availableWidth,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -362,9 +365,9 @@ class ScheduleTable extends StatelessWidget {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 960),
+              constraints: const BoxConstraints(minWidth: 0),
               child: SizedBox(
-                width: MediaQuery.sizeOf(context).width.clamp(960, 1200),
+                width: availableWidth,
                 child: Column(
                   children: [
                     _headerRow(),
@@ -398,7 +401,9 @@ class ScheduleTable extends StatelessWidget {
                             ),
                             Expanded(
                               flex: columnFlex('Назва'),
-                              child: padded(eventTitle(context, entry.value[i])),
+                              child: padded(
+                                eventTitle(context, entry.value[i]),
+                              ),
                             ),
                             Expanded(
                               flex: columnFlex('Локація'),
@@ -430,6 +435,7 @@ class ScheduleTable extends StatelessWidget {
   Widget _wideWeek(
     BuildContext context,
     Map<DateTime, List<PublicEvent>> byDay,
+    double availableWidth,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -437,9 +443,9 @@ class ScheduleTable extends StatelessWidget {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 960),
+            constraints: const BoxConstraints(minWidth: 0),
             child: SizedBox(
-              width: MediaQuery.sizeOf(context).width.clamp(960, 1200),
+              width: availableWidth,
               child: Column(
                 children: [
                   _headerRow(),
@@ -475,8 +481,7 @@ class ScheduleTable extends StatelessWidget {
                                             color: Colors.white.withValues(
                                               alpha: 0.7,
                                             ),
-                                            width:
-                                                i == entry.value.length - 1
+                                            width: i == entry.value.length - 1
                                                 ? 0
                                                 : 1,
                                           ),
@@ -546,10 +551,7 @@ class ScheduleTable extends StatelessWidget {
     );
   }
 
-  Widget _narrow(
-    BuildContext context,
-    Map<DateTime, List<PublicEvent>> byDay,
-  ) {
+  Widget _narrow(BuildContext context, Map<DateTime, List<PublicEvent>> byDay) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -559,7 +561,9 @@ class ScheduleTable extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: scheduleDayColors[entry.key.weekday - 1],
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(8),
+              ),
             ),
             child: Row(
               children: [

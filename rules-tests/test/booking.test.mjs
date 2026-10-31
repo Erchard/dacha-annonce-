@@ -2,7 +2,7 @@ import '../environment.mjs';
 import {before,after,beforeEach,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
-import {Timestamp,doc,getDoc,getDocs,collection,query,where,limit,setDoc,updateDoc,deleteDoc,serverTimestamp,writeBatch} from 'firebase/firestore';
+import {Bytes,Timestamp,doc,getDoc,getDocs,collection,query,where,limit,setDoc,updateDoc,deleteDoc,serverTimestamp,writeBatch} from 'firebase/firestore';
 import {environment,seed,dbFor,draft,start,ts,profile,room} from '../fixtures.mjs';
 import {execute,blocks} from '../booking-client.mjs';
 let env,admin,owner;
@@ -204,7 +204,7 @@ test('admin deletes a past approved event and releases historical occupancy', as
 });
 
 test('schedule details publish, filter and edit; forged projections and invalid fields denied', async () => {
- const cover={coverImageBytes:Uint8Array.from([1,2,3,4]),coverImageContentType:'image/jpeg',coverImageFileName:'poster.jpg'};
+ const cover={coverImageBytes:Bytes.fromUint8Array(Uint8Array.from([1,2,3,4])),coverImageContentType:'image/jpeg',coverImageFileName:'poster.jpg'};
  const details={contactPhone:'+380 00 000 00 00',notes:'Взяти блокнот',directions:['Культура','Для дітей'],...cover};
  await assertSucceeds(approved('details',draft(details)));
  const pub=env.unauthenticatedContext().firestore();
@@ -215,7 +215,7 @@ test('schedule details publish, filter and edit; forged projections and invalid 
  await assertFails(execute(admin,'admin','details','edit',{expectedVersion:1,draft:draft(details),tamper:plan=>{plan.find(p=>p.path==='publicEvents/details').data.contactPhone='12345';}}));
  await assertSucceeds(execute(admin,'admin','details','edit',{expectedVersion:1,draft:draft({...details,notes:'Оновлено'})}));
  assert.equal((await getDoc(doc(pub,'publicEvents/details'))).data().notes,'Оновлено');
- for(const patch of [{directions:['Невідомий']},{directions:['Клуб','Клуб']},{directions:'Клуб'},{notes:'x'.repeat(501)},{contactPhone:'not a phone'},{contactPhone:null},{coverImageContentType:'image/gif'},{coverImageBytes:null},{coverImageFileName:''}]) {
+ for(const patch of [{coverImageContentType:'text/html'},{coverImageFileName:''},{coverImageBytes:Bytes.fromUint8Array(new Uint8Array(700001))},{coverImageBytes:null},{directions:['Невідомий']},{directions:['Клуб','Клуб']},{directions:'Клуб'},{notes:'x'.repeat(501)},{contactPhone:'not a phone'},{contactPhone:null},{coverImageContentType:'image/gif'},{coverImageBytes:null},{coverImageFileName:''}]) {
   await assertFails(execute(admin,'admin','details','edit',{expectedVersion:2,draft:draft({...details,...patch})}));
  }
  await assertFails(execute(owner,'owner','details','edit',{expectedVersion:2,draft:draft(details)}));

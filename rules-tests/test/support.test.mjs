@@ -62,7 +62,7 @@ test('concurrent comments detect stale version and never silently overwrite',asy
 
 test('every support status edge matches the role transition table',async()=>{
  const statuses=['new','accepted','in_progress','done','rejected','closed'];
- const allowed={admin:{new:['closed'],done:['closed','new'],rejected:['closed','new'],closed:['new']},developer:{new:['accepted','rejected'],accepted:['in_progress','rejected'],in_progress:['done'],done:['closed','new'],rejected:['closed','new'],closed:['new']}};
+ const allowed={admin:{new:['closed'],done:['closed','new'],rejected:['closed','new'],closed:['new']},developer:{new:['accepted','in_progress','rejected'],accepted:['in_progress','rejected'],in_progress:['done'],done:['closed','new'],rejected:['closed','new'],closed:['new']}};
  await created();const fixture=(await getDoc(doc(dbFor(env,'admin'),'supportTickets/ticket'))).data();
  for(const role of ['admin','developer'])for(const from of statuses)for(const to of statuses){
   const id=`${role}-${from}-${to}`;

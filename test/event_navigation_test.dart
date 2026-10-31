@@ -57,8 +57,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('Особисте меню'));
+      await tester.pumpAndSettle();
       final control = find.text(
-        role == UserRole.admin ? 'Керувати подіями' : 'Мої події',
+        role == UserRole.admin ? 'Керувати подіями' : 'Мої події та заявки',
       );
       await tester.ensureVisible(control);
       await tester.tap(control);

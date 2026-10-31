@@ -147,3 +147,9 @@ Production `dacha-annonce`: Hosting + Firestore Rules для шести звер
 Production `dacha-annonce`: Firestore Rules + Hosting release «MI reopen-new, notes, help/contacts 2026-10-25». Commit `f6a161d`. main.dart.js SHA256: `B3F916551EAC838AAFC7668D646F959914654FEFA34A3C03B256244C12324E08`. Smoke HEAD 200: `/`, `/schedule`, `/help`, `/contacts`, `/support`.
 
 Закрито в Firestore: u7oe…, t34l4…, Mzh2Kx…, SIPac7…, k3dnap… → `done`; Lapx1iz… → `done` (відгук); 6wKQC4… → `closed` (тест). Поза випуском: Комунікація, email support/Auth, «Про нас».
+
+## MI tickets 28–29.10 — 2026-10-31
+
+Production `dacha-annonce`: Hosting + Rules «MI Oct-28 close/archive/mobile-cal/auth 2026-10-31». Commit `5c51817`. main.dart.js SHA256: `7FA7A4CA988BC2157A504746AD73583EAD8A5EF74F26B373CB203CAC8B422D7A`. Smoke HEAD 200: `/`, `/schedule`, `/archive`, `/help`, `/contacts`, `/login`.
+
+Закрито (`done`): DLskvdn…, 51lUT01…, gZtXYNu…, yoMJC8h…, eezSZfh…, tmwVh98….

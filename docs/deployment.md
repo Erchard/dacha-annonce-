@@ -156,7 +156,7 @@ Production `dacha-annonce`: Hosting + Rules «MI Oct-28 close/archive/mobile-cal
 
 ## MI tickets 31.10 — 2026-11-02
 
-Production `dacha-annonce`: Firestore Rules + indexes (author listMine) + Hosting «MI Oct-31 session/CTA/feedback/brand/PWA/calendar-colors 2026-11-02». main.dart.js SHA256: `F6A632C602B894153B342DFEB7A492F2B2540088DF2CC96B64B8A5CF704B7003`. Smoke HEAD 200: `/`, `/schedule`, `/help`, `/feedback`, `/manifest.json`, `/icons/Icon-192.png`.
+Production `dacha-annonce`: Firestore Rules + indexes (author listMine) + Hosting «MI Oct-31 session/CTA/feedback/brand/PWA/calendar-colors 2026-11-02». Commit `01b5a79`. main.dart.js SHA256: `F6A632C602B894153B342DFEB7A492F2B2540088DF2CC96B64B8A5CF704B7003`. Smoke HEAD 200: `/`, `/schedule`, `/help`, `/feedback`, `/manifest.json`, `/icons/Icon-192.png`. Rules follow-up: missing-doc get для organizer create feedback.
 
 - Auth LOCAL між вкладками; CTA «Створити подію»; feedback «Мої зауваження» + відповіді; нові іконки Дачі; PWA-копія без Play; кольори напрямків у місяці.
 - Закрито (`done`): a9RiN41…, OSBQFKv…, HfgFSjs…, BOat3Jl…, LFHemLv…, NDseX9F…, lDwPceG….

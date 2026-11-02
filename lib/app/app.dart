@@ -328,7 +328,8 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
     GoRoute(
       path: '/support/:id',
       builder: (context, state) => ProtectedPage(
-        roles: const [UserRole.admin, UserRole.developer],
+        // Authors (organizers) may open own feedback to see staff replies.
+        roles: const [UserRole.admin, UserRole.developer, UserRole.organizer],
         child: TicketPage(id: state.pathParameters['id']!),
       ),
     ),

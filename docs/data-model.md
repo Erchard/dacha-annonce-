@@ -7,7 +7,7 @@
 - bookings: приватні заявки; owner або admin. `responsibleName` — публічне ім’я відповідального. version і очікувана версія запобігають перезапису чужого рішення. history/{version} обов’язкова й незмінна. Щотижневий повтор — кілька звичайних заявок, без окремої колекції серій.
 - publicEvents: лише точна публічна проєкція approved booking, включно з `responsibleName`; UID, контакти, причини відхилення/скасування не копіюються.
 - rooms/{roomId}/occupancy/{blockId}: UTC блок 6 годин, 12 півгодинних слотів. ID — Unix seconds початку блока. lastMutationBookingId, lastMutationVersion, updatedAt/By підтверджують ту саму транзакцію. Повна перевірка вільності/власності й незмінності сторонніх слотів — у Rules; [обґрунтування](decisions/003-occupancy-version-witness.md).
-- supportTickets: версіоновані звернення; тільки admin/developer. comments append-only, history/{version} append-only, attachments append-only (JPEG/PNG/WebP ≤700 КБ, до 5 на звернення). Статус, priority, коментар та history змінюються атомарно. Підтримка не надає developer прав бронювання/керування користувачами.
+- supportTickets: версіоновані звернення. Staff (admin/developer) бачить усі; автор (createdBy) може get/list власні тікети й читати comments/history/attachments. Create feedback: organizer|admin. comments/history/attachments append-only; писати коментарі/статуси — лише staff. JPEG/PNG/WebP ≤700 КБ, до 5 на звернення. Підтримка не надає developer прав бронювання/керування користувачами.
 
 BookingService спершу читає всі потрібні documents, потім записує booking/history, до чотирьох occupancy блоків і publicEvents. Pending не створює locks. Cancellation видаляє публічну проєкцію і звільняє тільки власні slots. Якщо транзакція відхилена, часткових змін немає.
 

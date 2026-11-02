@@ -22,7 +22,7 @@ Widget _navBadge({required int count, required Widget child}) {
 
 String errorMessage(Object error) {
   if (error is DomainException) {
-    return switch (error.field) {
+    final base = switch (error.field) {
       'archiveBeforeDelete' => 'Спочатку архівуйте локацію.',
       'roomHasBookings' => 'У локації залишились сьогоднішні або майбутні заявки чи події. Перенесіть, скасуйте чи видаліть їх. Події минулих днів не заважають видаленню локації.',
       'startAt' => 'Початок має бути пізніше за поточний час (Київ) і не далі ніж за 180 днів. Для сьогодні оберіть час після зараз.',
@@ -33,6 +33,13 @@ String errorMessage(Object error) {
         'До одного звернення можна додати щонайбільше 5 зображень.',
       _ => error.message,
     };
+    if (error.code == ErrorCode.permissionDenied) {
+      return 'Недостатньо прав для цієї дії. Для зауважень потрібен обліковий запис організатора або адміністратора.';
+    }
+    if (error.code == ErrorCode.unexpected && error.technicalCode != null) {
+      return 'Не вдалося зберегти. Код: ${error.technicalCode}.';
+    }
+    return base;
   }
   if (error is FirebaseAuthException) {
     return switch (error.code) {
@@ -46,6 +53,16 @@ String errorMessage(Object error) {
       'too-many-requests' => 'Забагато спроб. Спробуйте пізніше.',
       'network-request-failed' => 'Перевірте інтернет-з’єднання.',
       _ => 'Не вдалося виконати дію. Код: ${error.code}.',
+    };
+  }
+  if (error is FirebaseException) {
+    return switch (error.code) {
+      'permission-denied' =>
+        'Недостатньо прав для цієї дії. Для зауважень потрібен обліковий запис організатора або адміністратора.',
+      'unavailable' || 'deadline-exceeded' =>
+        'Немає зв’язку із сервером. Спробуйте пізніше.',
+      'unauthenticated' => 'Увійдіть до облікового запису.',
+      _ => 'Не вдалося зберегти. Код: ${error.code}.',
     };
   }
   return 'Не вдалося завантажити або зберегти дані. Спробуйте ще раз.';
@@ -110,7 +127,7 @@ class AppFrame extends ConsumerWidget {
       const AppLink(to: '/archive', child: Text('Архів подій')),
       const AppLink(to: '/rooms', child: Text('Локації')),
       if (profile?.role != UserRole.developer)
-        AppLink(to: bookingPath, child: const Text('Подати заявку')),
+        AppLink(to: bookingPath, child: const Text('Створити подію')),
       const AppLink(
         to: '/feedback',
         child: Text('Зауваження та пропозиції'),
@@ -361,7 +378,7 @@ class AppFrame extends ConsumerWidget {
           ? FloatingActionButton.extended(
               onPressed: () => context.go(bookingPath),
               icon: const Icon(Icons.add),
-              label: const Text('Подати заявку'),
+              label: const Text('Створити подію'),
             )
           : null,
       bottomNavigationBar: narrow

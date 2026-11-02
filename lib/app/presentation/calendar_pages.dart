@@ -388,7 +388,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               ),
               FilledButton(
                 onPressed: () => book(signedIn, admin),
-                child: const Text('Забронювати'),
+                child: const Text('Створити подію'),
               ),
             ],
           ),
@@ -780,13 +780,26 @@ class _MonthGrid extends StatelessWidget {
                         onTap: () => onEventTap(event),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 3),
-                          child: Text(
-                            '${localTime(event.interval.start)} ${event.title}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: _calendarEventStyle(
-                              context,
-                              DateTime(month.year, month.month, day),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _eventDirectionTint(context, event),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              '${localTime(event.interval.start)} ${event.title}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _calendarEventStyle(
+                                context,
+                                DateTime(month.year, month.month, day),
+                              )?.copyWith(
+                                color: _eventDirectionFg(context, event),
+                              ),
                             ),
                           ),
                         ),
@@ -825,6 +838,24 @@ TextStyle? _calendarEventStyle(BuildContext context, DateTime day) {
     fontWeight: past ? FontWeight.w400 : FontWeight.w700,
     color: past ? Theme.of(context).colorScheme.outline : null,
   );
+}
+
+Color _eventDirectionTint(BuildContext context, PublicEvent event) {
+  if (event.directions.isEmpty) {
+    return Theme.of(context).colorScheme.secondaryContainer;
+  }
+  return directionColors(event.directions.first).$1;
+}
+
+Color _eventDirectionFg(BuildContext context, PublicEvent event) {
+  final kyiv = TimeZoneService().toKyiv(event.interval.start);
+  if (_isPastCalendarDay(DateTime(kyiv.year, kyiv.month, kyiv.day))) {
+    return Theme.of(context).colorScheme.outline;
+  }
+  if (event.directions.isEmpty) {
+    return Theme.of(context).colorScheme.onSecondaryContainer;
+  }
+  return directionColors(event.directions.first).$2;
 }
 
 String eventWhenLabel(PublicEvent event) {
@@ -1291,7 +1322,7 @@ class _RoomsPageState extends ConsumerState<RoomsPage> {
                       path: '/bookings/new',
                       queryParameters: {'room': room.id},
                     ).toString(),
-                    child: Text('Забронювати ${room.name}'),
+                    child: Text('Створити подію · ${room.name}'),
                   ),
                 ],
               ),
@@ -1444,7 +1475,7 @@ class _CompactCalendar extends StatelessWidget {
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color: scheme.secondaryContainer,
+                              color: _eventDirectionTint(context, event),
                               borderRadius: BorderRadius.circular(3),
                             ),
                             child: Text(
@@ -1454,7 +1485,7 @@ class _CompactCalendar extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 9,
                                 height: 1.1,
-                                color: scheme.onSecondaryContainer,
+                                color: _eventDirectionFg(context, event),
                               ),
                             ),
                           ),

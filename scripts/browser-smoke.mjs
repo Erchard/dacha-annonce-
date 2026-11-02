@@ -45,7 +45,7 @@ try{
  async function menu(name){await page.getByRole('button',{name:'Меню',exact:true}).click();await page.getByRole('menuitem',{name,exact:true}).click();}
  async function login(name){await enter(page.getByRole('textbox',{name:'Електронна адреса',exact:true}),name+'@example.test');await enter(page.getByRole('textbox',{name:'Пароль',exact:true}),'LocalDemo123!');await page.getByRole('button',{name:'Увійти',exact:true}).click();await page.getByRole('heading',{name:'Розклад',exact:true}).waitFor();}
  await menu('Вийти');await page.getByRole('heading',{name:'Розклад',exact:true}).waitFor();await menu('Увійти');await login('organizer');
- await page.getByRole('button',{name:'Забронювати',exact:true}).click();
+ await page.getByRole('button',{name:'Створити подію',exact:true}).click();
  await enter(page.getByRole('textbox',{name:/Назва події/}),'Заявка з браузера');
  const date=new Date(Date.now()+6*86400000).toISOString().slice(0,10);
  await enter(page.getByRole('textbox',{name:'Дата (РРРР-ММ-ДД)',exact:true}),date);

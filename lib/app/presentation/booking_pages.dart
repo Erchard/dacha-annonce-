@@ -86,7 +86,7 @@ class _BookingsPageState extends ConsumerState<BookingsPage> {
               onPressed: () => context.go(
                 widget.forAdmin ? '/admin/events/new' : '/bookings/new',
               ),
-              child: Text(widget.forAdmin ? 'Створити подію' : 'Подати заявку'),
+              child: const Text('Створити подію'),
             ),
           ],
         ),
@@ -604,7 +604,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
           if (!await confirmAction(
             context,
             'Цей час уже зайнятий',
-            'Можна подати заявку на розгляд, але вона не резервує кімнату. Адміністрація має узгодити інший час. Подати заявку?',
+            'Можна створити подію на розгляд, але вона не резервує кімнату. Адміністрація має узгодити інший час. Створити подію?',
           )) {
             return;
           }
@@ -837,7 +837,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
           : (widget.approved ||
                 ref.read(profileProvider).asData?.value?.canPublish == true)
           ? 'Створити подію'
-          : 'Подати заявку',
+          : 'Створити подію',
       child: loading
           ? const LinearProgressIndicator()
           : loadError != null

@@ -183,7 +183,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     controlAffinity: ListTileControlAffinity.leading,
                     title: const Text('Запам’ятати мене на цьому комп’ютері'),
                     subtitle: const Text(
-                      'Наступного разу вхід без екрана логіну. Браузер також може зберегти пароль.',
+                      'Сесія зберігається між вкладками й після закриття браузера. '
+                      'Галочка також дозволяє браузеру запропонувати зберегти пароль.',
                     ),
                   ),
                 if (error != null)

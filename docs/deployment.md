@@ -153,3 +153,10 @@ Production `dacha-annonce`: Firestore Rules + Hosting release «MI reopen-new, n
 Production `dacha-annonce`: Hosting + Rules «MI Oct-28 close/archive/mobile-cal/auth 2026-10-31». Commit `5c51817`. main.dart.js SHA256: `7FA7A4CA988BC2157A504746AD73583EAD8A5EF74F26B373CB203CAC8B422D7A`. Smoke HEAD 200: `/`, `/schedule`, `/archive`, `/help`, `/contacts`, `/login`.
 
 Закрито (`done`): DLskvdn…, 51lUT01…, gZtXYNu…, yoMJC8h…, eezSZfh…, tmwVh98….
+
+## MI tickets 31.10 — 2026-11-02
+
+Production `dacha-annonce`: Firestore Rules + indexes (author listMine) + Hosting «MI Oct-31 session/CTA/feedback/brand/PWA/calendar-colors 2026-11-02». main.dart.js SHA256: `F6A632C602B894153B342DFEB7A492F2B2540088DF2CC96B64B8A5CF704B7003`. Smoke HEAD 200: `/`, `/schedule`, `/help`, `/feedback`, `/manifest.json`, `/icons/Icon-192.png`.
+
+- Auth LOCAL між вкладками; CTA «Створити подію»; feedback «Мої зауваження» + відповіді; нові іконки Дачі; PWA-копія без Play; кольори напрямків у місяці.
+- Закрито (`done`): a9RiN41…, OSBQFKv…, HfgFSjs…, BOat3Jl…, LFHemLv…, NDseX9F…, lDwPceG….

@@ -191,3 +191,14 @@ MI повідомляє, що листи зміни пароля не прихо
 4. **yoMJC8h4IbFYUJlSiGFy** — мобільний місяць із назвами подій у клітинках (як Google); тап → день.
 5. **eezSZfhhYduZZTW9tz3G** — помітніше око пароля + підказка.
 6. **tmwVh98KSHy46IpY2fdz** — банер після реєстрації (`/account?registered=1`) про email і затвердження admin.
+
+## Звернення 31.10.2026 — реалізація 02.11.2026
+
+1. **a9RiN41Sn8OpHIJPPN6L** — Auth завжди Persistence.LOCAL після входу (сесія між вкладками); чекбокс лише для UX/автозаповнення пароля.
+2. **OSBQFKvPuExJ4uFpX8id** — усі CTA «Створити подію» (меню, FAB, календар, форма).
+3. **HfgFSjsBxNfs3ntHu2s9** / **BOat3JlfZSpo6CWCQlUg** — feedback: зрозумілі помилки, redirect на звернення, «Мої зауваження», rules list/get comments для автора.
+4. **LFHemLvvcTzWSgCqal9i** — нова символіка Дачі в assets/web icons/manifest/OG.
+5. **NDseX9F7JJWLpN3F1O8P** — PWA як ярлик через Chrome, не Google Play; текст у банері й `/help`.
+6. **lDwPceGyx5wG3qwoifKr** — кольори смужок подій у місяці за першим напрямком.
+
+Поза випуском: черга «Комунікація», SMTP support, гарантія Auth-листів, «Про нас», публікація в Google Play.

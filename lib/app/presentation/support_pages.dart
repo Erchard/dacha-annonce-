@@ -227,12 +227,17 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
   final form = GlobalKey<FormState>();
   late final String id;
   bool busy = false;
+  bool loadingMine = true;
   Object? error;
+  Object? mineError;
+  List<Ticket> mine = [];
+  PageCursor? mineNext;
 
   @override
   void initState() {
     super.initState();
     id = ref.read(supportRepositoryProvider).newId();
+    Future.microtask(() => loadMine(true));
   }
 
   @override
@@ -240,6 +245,32 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
     title.dispose();
     body.dispose();
     super.dispose();
+  }
+
+  Future<void> loadMine(bool reset) async {
+    setState(() {
+      loadingMine = true;
+      mineError = null;
+      if (reset) {
+        mine = [];
+        mineNext = null;
+      }
+    });
+    try {
+      final page = await ref
+          .read(supportRepositoryProvider)
+          .listMine(PageRequest(after: mineNext));
+      if (mounted) {
+        setState(() {
+          mine = [...mine, ...page.items];
+          mineNext = page.next;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => mineError = e);
+    } finally {
+      if (mounted) setState(() => loadingMine = false);
+    }
   }
 
   Future<void> submit() async {
@@ -256,11 +287,11 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Дякуємо! Зауваження надіслано. Адміністрація відповість у зверненнях.',
+            'Дякуємо! Зауваження надіслано. Відповідь з’явиться в коментарях на цій сторінці.',
           ),
         ),
       );
-      context.go('/');
+      context.go('/support/$id');
     } catch (e) {
       if (mounted) setState(() => error = e);
     } finally {
@@ -271,41 +302,79 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
   @override
   Widget build(BuildContext context) => AppFrame(
     title: 'Зауваження та пропозиції',
-    child: Form(
-      key: form,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Опишіть зауваження або ідею покращення. Після збереження звернення побачать адміністрація та розробник.',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Form(
+          key: form,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Опишіть зауваження або ідею покращення. Після надсилання ви '
+                'побачите звернення тут; відповідь адміністрації з’явиться в '
+                'коментарях.',
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: title,
+                maxLength: 160,
+                decoration: const InputDecoration(labelText: 'Тема'),
+                validator: (v) => (v?.trim().runes.length ?? 0) < 3
+                    ? 'Щонайменше 3 символи'
+                    : null,
+              ),
+              TextFormField(
+                controller: body,
+                maxLength: 10000,
+                minLines: 5,
+                maxLines: 12,
+                decoration: const InputDecoration(labelText: 'Опис'),
+                validator: (v) => (v?.trim().runes.length ?? 0) < 10
+                    ? 'Щонайменше 10 символів'
+                    : null,
+              ),
+              if (error != null) Problem(error!),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: busy ? null : submit,
+                child: Text(busy ? 'Надсилання…' : 'Надіслати'),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: title,
-            maxLength: 160,
-            decoration: const InputDecoration(labelText: 'Тема'),
-            validator: (v) => (v?.trim().runes.length ?? 0) < 3
-                ? 'Щонайменше 3 символи'
-                : null,
+        ),
+        const SizedBox(height: 32),
+        Text('Мої зауваження', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        const Text(
+          'Тут зберігаються ваші надіслані звернення. Відкрийте, щоб побачити '
+          'статус і відповідь у коментарях.',
+        ),
+        const SizedBox(height: 12),
+        if (loadingMine) const LinearProgressIndicator(),
+        if (mineError != null)
+          Problem(mineError!, retry: () => loadMine(true)),
+        if (!loadingMine && mineError == null && mine.isEmpty)
+          const Text('Ви ще не надсилали зауважень.'),
+        for (final t in mine)
+          Card(
+            child: AppLinkTap(
+              to: '/support/${t.id}',
+              builder: (context, onTap) => ListTile(
+                title: Text(t.title),
+                subtitle: Text(
+                  '${ticketStatusLabel(t.status)} · ${localDate(t.lastActivityAt)}',
+                ),
+                onTap: onTap,
+              ),
+            ),
           ),
-          TextFormField(
-            controller: body,
-            maxLength: 10000,
-            minLines: 5,
-            maxLines: 12,
-            decoration: const InputDecoration(labelText: 'Опис'),
-            validator: (v) => (v?.trim().runes.length ?? 0) < 10
-                ? 'Щонайменше 10 символів'
-                : null,
+        if (mineNext != null)
+          TextButton(
+            onPressed: loadingMine ? null : () => loadMine(false),
+            child: const Text('Завантажити ще'),
           ),
-          if (error != null) Problem(error!),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: busy ? null : submit,
-            child: Text(busy ? 'Надсилання…' : 'Надіслати'),
-          ),
-        ],
-      ),
+      ],
     ),
   );
 }
@@ -741,6 +810,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
   Widget build(BuildContext context) {
     final t = ticket,
         role = ref.watch(profileProvider).asData?.value?.role.name ?? '';
+    final isStaff = role == 'admin' || role == 'developer';
     return AppFrame(
       title: t?.title ?? 'Звернення',
       child: Column(
@@ -756,18 +826,20 @@ class _TicketPageState extends ConsumerState<TicketPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              switch (t.status) {
-                'accepted' =>
-                  '«Очікує роботи» означає, що розробник прийняв звернення. Це не схвалення події. Після перевірки натисніть «Закрити».',
-                'done' =>
-                  'Роботу позначено виконаною. Якщо все гаразд — натисніть «Закрити». Якщо ні — «Відкрити повторно».',
-                'new' =>
-                  role == 'admin'
-                      ? 'Нове звернення. Помилкове можна прибрати кнопкою «Видалити». Команда «Закрити» з’явиться після виконання.'
-                      : 'Нове звернення чекає на розробника.',
-                _ =>
-                  'Статус у рядку вище — поточний стан. Кнопки нижче — дії (наприклад «Закрити»), а не назви статусів.',
-              },
+              !isStaff
+                  ? 'Це ваше звернення. Відповідь адміністрації з’явиться нижче в коментарях. Статус змінює лише команда Дачі.'
+                  : switch (t.status) {
+                      'accepted' =>
+                        '«Очікує роботи» означає, що розробник прийняв звернення. Це не схвалення події. Після перевірки натисніть «Закрити».',
+                      'done' =>
+                        'Роботу позначено виконаною. Якщо все гаразд — натисніть «Закрити». Якщо ні — «Відкрити повторно».',
+                      'new' =>
+                        role == 'admin'
+                            ? 'Нове звернення. Помилкове можна прибрати кнопкою «Видалити». Команда «Закрити» з’явиться після виконання.'
+                            : 'Нове звернення чекає на розробника.',
+                      _ =>
+                        'Статус у рядку вище — поточний стан. Кнопки нижче — дії (наприклад «Закрити»), а не назви статусів.',
+                    },
               style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),
@@ -794,45 +866,50 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                     ),
               ],
             ),
-            OutlinedButton.icon(
-              onPressed: busy || attachments.length >= maxAttachmentsPerTicket
-                  ? null
-                  : addPhotos,
-              icon: const Icon(Icons.image_outlined),
-              label: Text(
-                'Додати фото (${attachments.length}/$maxAttachmentsPerTicket)',
-              ),
-            ),
-            const Divider(height: 32),
-            TextField(
-              controller: comment,
-              minLines: 2,
-              maxLines: 8,
-              maxLength: 5000,
-              decoration: const InputDecoration(
-                labelText: 'Коментар',
-                helperText: 'Звичайні уточнення. Причину повторного відкриття запитає окреме вікно кнопки «Відкрити повторно».',
-              ),
-            ),
-            if (role == 'admin' && t.status == 'new')
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Помилкове або тестове звернення зі статусом «Нове» можна прибрати кнопкою Видалити (запис лишається в історії). Також є іконка кошика в списку звернень.',
-                  style: TextStyle(fontSize: 13),
+            if (isStaff)
+              OutlinedButton.icon(
+                onPressed: busy || attachments.length >= maxAttachmentsPerTicket
+                    ? null
+                    : addPhotos,
+                icon: const Icon(Icons.image_outlined),
+                label: Text(
+                  'Додати фото (${attachments.length}/$maxAttachmentsPerTicket)',
                 ),
               ),
+            if (isStaff) ...[
+              const Divider(height: 32),
+              TextField(
+                controller: comment,
+                minLines: 2,
+                maxLines: 8,
+                maxLength: 5000,
+                decoration: const InputDecoration(
+                  labelText: 'Коментар',
+                  helperText:
+                      'Звичайні уточнення. Причину повторного відкриття запитає окреме вікно кнопки «Відкрити повторно».',
+                ),
+              ),
+              if (role == 'admin' && t.status == 'new')
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Помилкове або тестове звернення зі статусом «Нове» можна прибрати кнопкою Видалити (запис лишається в історії). Також є іконка кошика в списку звернень.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
+            ],
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
-                FilledButton(
-                  onPressed: busy
-                      ? null
-                      : () => act((r, t) => r.comment(t, comment.text)),
-                  child: const Text('Додати коментар'),
-                ),
-                if (role == 'admin' && t.status == 'new')
+                if (isStaff)
+                  FilledButton(
+                    onPressed: busy
+                        ? null
+                        : () => act((r, t) => r.comment(t, comment.text)),
+                    child: const Text('Додати коментар'),
+                  ),
+                if (isStaff && role == 'admin' && t.status == 'new')
                   OutlinedButton(
                     onPressed: busy
                         ? null
@@ -899,85 +976,86 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                           },
                     child: const Text('Редагувати'),
                   ),
-                for (final status in allowedTicketStatuses(role, t.status))
-                  Builder(
-                    builder: (context) {
-                      final withdrawing =
-                          role == 'admin' &&
-                          t.status == 'new' &&
-                          status == 'closed';
-                      final reopening =
-                          status == 'new' &&
-                          ['done', 'rejected', 'closed'].contains(t.status);
-                      final label = withdrawing
-                          ? 'Видалити'
-                          : reopening
-                          ? 'Відкрити повторно'
-                          : status == 'closed'
-                          ? 'Закрити'
-                          : status == 'accepted'
-                          ? 'Прийняти в роботу'
-                          : status == 'in_progress'
-                          ? 'Взяти в роботу'
-                          : status == 'done'
-                          ? 'Позначити виконаним'
-                          : status == 'rejected'
-                          ? 'Відхилити'
-                          : ticketStatusLabel(status);
-                      Future<void> onPressed() async {
-                        if (reopening) {
-                          final reason = await askReopenReason();
-                          if (reason == null || !mounted) return;
-                          await act(
-                            (r, ticket) =>
-                                r.status(ticket, status, comment: reason),
-                            successMessage:
-                                'Звернення знову відкрито зі статусом «Нове».',
-                          );
-                          return;
+                if (isStaff)
+                  for (final status in allowedTicketStatuses(role, t.status))
+                    Builder(
+                      builder: (context) {
+                        final withdrawing =
+                            role == 'admin' &&
+                            t.status == 'new' &&
+                            status == 'closed';
+                        final reopening =
+                            status == 'new' &&
+                            ['done', 'rejected', 'closed'].contains(t.status);
+                        final label = withdrawing
+                            ? 'Видалити'
+                            : reopening
+                            ? 'Відкрити повторно'
+                            : status == 'closed'
+                            ? 'Закрити'
+                            : status == 'accepted'
+                            ? 'Прийняти в роботу'
+                            : status == 'in_progress'
+                            ? 'Взяти в роботу'
+                            : status == 'done'
+                            ? 'Позначити виконаним'
+                            : status == 'rejected'
+                            ? 'Відхилити'
+                            : ticketStatusLabel(status);
+                        Future<void> onPressed() async {
+                          if (reopening) {
+                            final reason = await askReopenReason();
+                            if (reason == null || !mounted) return;
+                            await act(
+                              (r, ticket) =>
+                                  r.status(ticket, status, comment: reason),
+                              successMessage:
+                                  'Звернення знову відкрито зі статусом «Нове».',
+                            );
+                            return;
+                          }
+                          if (await confirmAction(
+                            context,
+                            withdrawing
+                                ? 'Видалити звернення?'
+                                : status == 'closed'
+                                ? 'Закрити звернення?'
+                                : 'Змінити статус?',
+                            withdrawing
+                                ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.'
+                                : status == 'closed'
+                                ? 'Після перевірки звернення можна закрити. Статус стане «Закрито».'
+                                : label,
+                          )) {
+                            await act(
+                              (r, ticket) => r.status(
+                                ticket,
+                                status,
+                                comment: comment.text.trim().isEmpty
+                                    ? null
+                                    : comment.text,
+                              ),
+                              successMessage: withdrawing
+                                  ? 'Звернення закрито.'
+                                  : null,
+                            );
+                          }
                         }
-                        if (await confirmAction(
-                          context,
-                          withdrawing
-                              ? 'Видалити звернення?'
-                              : status == 'closed'
-                              ? 'Закрити звернення?'
-                              : 'Змінити статус?',
-                          withdrawing
-                              ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.'
-                              : status == 'closed'
-                              ? 'Після перевірки звернення можна закрити. Статус стане «Закрито».'
-                              : label,
-                        )) {
-                          await act(
-                            (r, ticket) => r.status(
-                              ticket,
-                              status,
-                              comment: comment.text.trim().isEmpty
-                                  ? null
-                                  : comment.text,
-                            ),
-                            successMessage: withdrawing
-                                ? 'Звернення закрито.'
-                                : null,
-                          );
-                        }
-                      }
 
-                      if (withdrawing) {
-                        return FilledButton.tonalIcon(
+                        if (withdrawing) {
+                          return FilledButton.tonalIcon(
+                            onPressed: busy ? null : onPressed,
+                            icon: const Icon(Icons.delete_outline),
+                            label: Text(label),
+                          );
+                        }
+                        return OutlinedButton(
                           onPressed: busy ? null : onPressed,
-                          icon: const Icon(Icons.delete_outline),
-                          label: Text(label),
+                          child: Text(label),
                         );
-                      }
-                      return OutlinedButton(
-                        onPressed: busy ? null : onPressed,
-                        child: Text(label),
-                      );
-                    },
-                  ),
-                if (role == 'developer')
+                      },
+                    ),
+                if (isStaff && role == 'developer')
                   DropdownButton<String>(
                     value: t.priority,
                     items: [
@@ -1000,14 +1078,26 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                   child: const Text('Оновити'),
                 ),
                 TextButton(
-                  onPressed: busy ? null : () => context.go('/support'),
-                  child: const Text('До списку звернень'),
+                  onPressed: busy
+                      ? null
+                      : () => context.go(isStaff ? '/support' : '/feedback'),
+                  child: Text(
+                    isStaff ? 'До списку звернень' : 'До моїх зауважень',
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 24),
-            Text('Коментарі', style: Theme.of(context).textTheme.titleLarge),
-            if (comments.isEmpty) const Text('Коментарів поки немає.'),
+            Text(
+              isStaff ? 'Коментарі' : 'Відповіді',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            if (comments.isEmpty)
+              Text(
+                isStaff
+                    ? 'Коментарів поки немає.'
+                    : 'Відповіді ще немає. Адміністрація відповість у коментарях.',
+              ),
             for (final c in comments)
               Card(
                 child: Padding(

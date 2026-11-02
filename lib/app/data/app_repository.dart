@@ -527,8 +527,13 @@ class FirebaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> setRememberSignedIn(bool remember) =>
-      auth.setPersistence(remember ? Persistence.LOCAL : Persistence.SESSION);
+  Future<void> setRememberSignedIn(bool _) async {
+    // Always LOCAL on web: SESSION uses sessionStorage and drops sign-in in
+    // other tabs / reopen. Emulator bootstrap may still set SESSION first;
+    // after login we prefer LOCAL so multi-tab works in both modes.
+    // The login form checkbox only affects browser password autofill UX.
+    await auth.setPersistence(Persistence.LOCAL);
+  }
 
   @override
   Future<void> signOut() => auth.signOut();

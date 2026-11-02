@@ -44,7 +44,8 @@ class _InstallBannerState extends State<InstallBanner> {
         builder: (context) => AlertDialog(
           title: const Text('Встановити «Дача»'),
           content: const Text(
-            'На iPhone/iPad: Поділитися → На початковий екран.',
+            'На iPhone/iPad: Поділитися → На початковий екран. '
+            'Це ярлик сайту в браузері, не програма з App Store чи Google Play.',
           ),
           actions: [
             FilledButton(
@@ -79,11 +80,11 @@ class _InstallBannerState extends State<InstallBanner> {
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
-                'Встановіть «Дача» на головний екран для швидкого доступу.',
+                'Ярлик «Дача» на головний екран через браузер (не з Google Play).',
                 style: TextStyle(fontSize: 13),
               ),
             ),
-            TextButton(onPressed: _install, child: const Text('Встановити')),
+            TextButton(onPressed: _install, child: const Text('Додати')),
             IconButton(
               tooltip: 'Закрити',
               onPressed: _dismiss,

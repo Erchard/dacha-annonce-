@@ -403,7 +403,8 @@ service cloud.firestore {
                 && (!(n.status == 'new' && b.status in ['done','rejected','closed']) || commented)))));
     }
     function feedbackAuthor() {
-      return request.auth != null && resource.data.createdBy == request.auth.uid;
+      return request.auth != null
+        && resource.data.createdBy == request.auth.uid;
     }
     function canCreateFeedbackTicket(ticketId) {
       return (admin() || organizer())
@@ -418,36 +419,45 @@ service cloud.firestore {
         && ticketLinks(ticketId,null,request.resource.data)
         && (admin() || request.resource.data.type == 'feedback');
     }
+    function ticketBefore(ticketId) {
+      let p = /databases/$(database)/documents/supportTickets/$(ticketId);
+      return exists(p) ? get(p).data : null;
+    }
+    function ticketAuthor(ticketId) {
+      let b = ticketBefore(ticketId);
+      return request.auth != null && b != null && b.createdBy == request.auth.uid;
+    }
     match /supportTickets/{ticketId} {
-      allow get: if supportStaff() || feedbackAuthor();
-      allow list: if supportStaff() && bounded();
+      // Missing-doc get must succeed for create transactions (tx.get before set).
+      allow get: if supportStaff()
+        || (request.auth != null && resource == null)
+        || feedbackAuthor();
+      // Staff see all; authors see only own tickets (query must filter createdBy).
+      allow list: if bounded() && (supportStaff()
+        || (request.auth != null && resource.data.createdBy == request.auth.uid));
       allow create: if canCreateFeedbackTicket(ticketId);
       allow update: if supportStaff() && validTicket(request.resource.data)
         && ticketUpdate(resource.data,request.resource.data) && ticketLinks(ticketId,resource.data,request.resource.data);
       allow delete: if false;
       match /history/{version} {
-        allow get: if supportStaff();
-        allow list: if supportStaff() && bounded();
+        allow get: if supportStaff() || ticketAuthor(ticketId);
+        allow list: if bounded() && (supportStaff() || ticketAuthor(ticketId));
         allow create: if version == string(request.resource.data.version)
           && supportHistoryWrite(ticketId,request.resource.data);
         allow update, delete: if false;
       }
       match /comments/{commentId} {
-        allow get: if supportStaff();
-        allow list: if supportStaff() && bounded();
+        allow get: if supportStaff() || ticketAuthor(ticketId);
+        allow list: if bounded() && (supportStaff() || ticketAuthor(ticketId));
         allow create: if supportStaff() && supportCommentWrite(ticketId,commentId,request.resource.data);
         allow update, delete: if false;
       }
       match /attachments/{attachmentId} {
-        allow get: if supportStaff();
-        allow list: if supportStaff() && bounded();
+        allow get: if supportStaff() || ticketAuthor(ticketId);
+        allow list: if bounded() && (supportStaff() || ticketAuthor(ticketId));
         allow create: if supportStaff() && supportAttachmentWrite(ticketId,request.resource.data);
         allow update, delete: if false;
       }
-    }
-    function ticketBefore(ticketId) {
-      let p = /databases/$(database)/documents/supportTickets/$(ticketId);
-      return exists(p) ? get(p).data : null;
     }
     function supportHistoryWrite(ticketId,h) {
       let b = ticketBefore(ticketId);

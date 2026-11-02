@@ -2,13 +2,14 @@ import '../environment.mjs';
 import {before,after,beforeEach,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
-import {doc,getDoc,getDocs,collection,query,limit,updateDoc,setDoc,deleteDoc} from 'firebase/firestore';
+import {doc,getDoc,getDocs,collection,query,limit,where,orderBy,updateDoc,setDoc,deleteDoc} from 'firebase/firestore';
 import {environment,seed,dbFor} from '../fixtures.mjs';
 import {ticketCommand} from '../support-client.mjs';
 let env;
 before(async()=>{env=await environment();});after(async()=>{await env?.cleanup();});
 beforeEach(async()=>{await env.clearFirestore();await seed(env);});
-const cmd=(actor,action,options={},id='ticket')=>ticketCommand(dbFor(env,actor),actor,actor==='developer'?'developer':'admin',id,action,options);
+const roleOf=actor=>actor==='developer'?'developer':actor==='admin'||actor==='admin2'?'admin':'organizer';
+const cmd=(actor,action,options={},id='ticket')=>ticketCommand(dbFor(env,actor),actor,roleOf(actor),id,action,options);
 async function created(){await cmd('admin','created');}
 test('support lifecycle with required reopen comment and immutable history',async()=>{
  await created();
@@ -40,6 +41,19 @@ test('support roles, bounded queries and creation validation',async()=>{
  }
  await assertSucceeds(getDocs(query(collection(dbFor(env,'developer'),'supportTickets'),limit(25))));
  await assertFails(getDocs(collection(dbFor(env,'admin'),'supportTickets')));
+});
+test('organizer can create feedback, list own tickets and read comments',async()=>{
+ await assertSucceeds(cmd('owner','created',{type:'feedback'},'fb-owner'));
+ await assertFails(cmd('owner','created',{type:'bug'},'fb-bug'));
+ const owner=dbFor(env,'owner');
+ await assertSucceeds(getDoc(doc(owner,'supportTickets/fb-owner')));
+ await assertSucceeds(getDocs(query(collection(owner,'supportTickets'),where('createdBy','==','owner'),orderBy('lastActivityAt','desc'),limit(25))));
+ await assertFails(getDocs(query(collection(owner,'supportTickets'),limit(25))));
+ await assertSucceeds(getDocs(query(collection(owner,'supportTickets/fb-owner/history'),limit(25))));
+ await assertSucceeds(getDocs(query(collection(owner,'supportTickets/fb-owner/comments'),limit(25))));
+ const other=dbFor(env,'other');
+ await assertFails(getDoc(doc(other,'supportTickets/fb-owner')));
+ await assertFails(getDocs(query(collection(other,'supportTickets/fb-owner/comments'),limit(25))));
 });
 test('comments and priority require exact atomic history and correct actor',async()=>{
  await created();

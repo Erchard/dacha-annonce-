@@ -636,6 +636,27 @@ Future<bool> confirmAction(
     ) ??
     false;
 
+/// Warn when a picked image exceeds the 700 KB upload limit.
+Future<void> showPhotoTooLargeDialog(
+  BuildContext context, {
+  int maxKilobytes = 700,
+}) => showDialog<void>(
+  context: context,
+  builder: (context) => AlertDialog(
+    title: const Text('Фото завелике'),
+    content: Text(
+      'Це фото більше ніж $maxKilobytes КБ. Стисніть зображення '
+      '(JPEG, PNG або WebP) і спробуйте знову.',
+    ),
+    actions: [
+      FilledButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Зрозуміло'),
+      ),
+    ],
+  ),
+);
+
 class ActionButton extends StatefulWidget {
   const ActionButton({
     super.key,

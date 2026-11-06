@@ -160,3 +160,11 @@ Production `dacha-annonce`: Firestore Rules + indexes (author listMine) + Hostin
 
 - Auth LOCAL між вкладками; CTA «Створити подію»; feedback «Мої зауваження» + відповіді; нові іконки Дачі; PWA-копія без Play; кольори напрямків у місяці.
 - Закрито (`done`): a9RiN41…, OSBQFKv…, HfgFSjs…, BOat3Jl…, LFHemLv…, NDseX9F…, lDwPceG….
+
+## MI tickets 06.11 — 2026-11-06
+
+Production `dacha-annonce`: Hosting «MI Nov-6 colorful calendar + photo size dialog». main.dart.js SHA256: `15C828B64585762FD2798208950DA9B587C5A4D3D0F3A38ACB0E01214AFA5035`. Smoke HEAD 200: `/`, `/schedule`.
+
+- Місячний календар: пастельні колонки за днем тижня (`scheduleDayColors`).
+- Діалог при фото >700 КБ (support + cover).
+- Закрито: 6lQTxk…, NyVqHl… (`done`); CH1g5R… (`done` → `closed`).

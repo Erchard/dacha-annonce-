@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/domain/page.dart';
-import '../../core/errors/domain_exception.dart';
 import '../../core/widgets/app_link.dart';
 import '../../core/widgets/copy_friendly_image.dart';
 import '../../features/support/support_repository.dart';
@@ -439,12 +438,7 @@ class _NewTicketPageState extends ConsumerState<NewTicketPage> {
           ? 'image/webp'
           : 'image/jpeg';
       if (bytes.length > maxAttachmentBytes) {
-        setState(
-          () => error = const DomainException(
-            ErrorCode.validation,
-            field: 'attachment',
-          ),
-        );
+        if (mounted) await showPhotoTooLargeDialog(context);
         continue;
       }
       setState(
@@ -743,10 +737,8 @@ class _TicketPageState extends ConsumerState<TicketPage> {
         final bytes = await file.readAsBytes();
         if (bytes.isEmpty) continue;
         if (bytes.length > maxAttachmentBytes) {
-          throw const DomainException(
-            ErrorCode.validation,
-            field: 'attachment',
-          );
+          if (mounted) await showPhotoTooLargeDialog(context);
+          continue;
         }
         final lower = file.name.toLowerCase();
         final contentType = lower.endsWith('.png')

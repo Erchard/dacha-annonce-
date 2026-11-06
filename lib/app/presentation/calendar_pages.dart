@@ -710,11 +710,20 @@ class _MonthGrid extends StatelessWidget {
         children: [
           Row(
             children: [
-              for (final day in ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'])
+              for (var i = 0; i < 7; i++)
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Text(day, textAlign: TextAlign.center),
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: scheduleDayColors[i],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      const ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'][i],
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
             ],
@@ -749,11 +758,12 @@ class _MonthGrid extends StatelessWidget {
                         event.interval.end.isAfter(start),
                   )
                   .toList();
+              final cellDay = DateTime(month.year, month.month, day);
               return Container(
                 margin: const EdgeInsets.all(2),
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerLow,
+                  color: _weekdayCellColor(cellDay),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Column(
@@ -766,14 +776,12 @@ class _MonthGrid extends StatelessWidget {
                           queryParameters: {
                             ...GoRouterState.of(context).uri.queryParameters,
                             'date': DateFormat('yyyy-MM-dd')
-                                .format(DateTime(month.year, month.month, day)),
+                                .format(cellDay),
                             'view': 'day',
                           },
                         ).toString(),
                       ),
-                      child: _CalendarDayLabel(
-                        DateTime(month.year, month.month, day),
-                      ),
+                      child: _CalendarDayLabel(cellDay),
                     ),
                     for (final event in todayEvents.take(2))
                       InkWell(
@@ -830,6 +838,15 @@ bool _isPastCalendarDay(DateTime day) {
     day.month,
     day.day,
   ).isBefore(DateTime(now.year, now.month, now.day));
+}
+
+/// Pastel weekday columns (same palette as schedule) for the month grid.
+Color _weekdayCellColor(DateTime day) {
+  final base = scheduleDayColors[day.weekday - 1];
+  if (_isPastCalendarDay(day)) {
+    return Color.lerp(base, const Color(0xfff5f5f0), 0.45) ?? base;
+  }
+  return base;
 }
 
 TextStyle? _calendarEventStyle(BuildContext context, DateTime day) {
@@ -1390,15 +1407,23 @@ class _CompactCalendar extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           children: [
-            for (final label in ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'])
+            for (var i = 0; i < 7; i++)
               Expanded(
-                child: Center(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSurfaceVariant,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  decoration: BoxDecoration(
+                    color: scheduleDayColors[i],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Center(
+                    child: Text(
+                      const ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'][i],
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
@@ -1438,31 +1463,45 @@ class _CompactCalendar extends StatelessWidget {
                   margin: const EdgeInsets.all(1.5),
                   padding: const EdgeInsets.fromLTRB(3, 4, 3, 3),
                   decoration: BoxDecoration(
-                    color: today
-                        ? scheme.primaryContainer
-                        : past
-                        ? scheme.surfaceContainerHighest.withValues(alpha: 0.45)
-                        : scheme.surface,
+                    color: _weekdayCellColor(date),
                     border: Border.all(
                       color: today
                           ? scheme.primary
-                          : scheme.outlineVariant,
-                      width: today ? 1.5 : 1,
+                          : scheduleDayColors[date.weekday - 1]
+                                .withValues(alpha: 0.9),
+                      width: today ? 1.5 : 0.5,
                     ),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        '${date.day}',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: today
-                              ? FontWeight.w700
-                              : FontWeight.w600,
-                          color: past ? Colors.grey : scheme.onSurface,
+                      Center(
+                        child: Container(
+                          width: 22,
+                          height: 22,
+                          alignment: Alignment.center,
+                          decoration: today
+                              ? BoxDecoration(
+                                  color: scheme.primary,
+                                  shape: BoxShape.circle,
+                                )
+                              : null,
+                          child: Text(
+                            '${date.day}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: today || !past
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
+                              color: today
+                                  ? scheme.onPrimary
+                                  : past
+                                  ? Colors.grey
+                                  : scheme.onSurface,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 2),

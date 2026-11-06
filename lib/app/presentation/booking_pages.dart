@@ -403,6 +403,10 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
     final file = files.first;
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty) return;
+    if (bytes.length > maxCoverImageBytes) {
+      if (mounted) await showPhotoTooLargeDialog(context);
+      return;
+    }
     try {
       final lower = file.name.toLowerCase();
       final contentType = lower.endsWith('.png')

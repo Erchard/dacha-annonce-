@@ -19,6 +19,7 @@ import '../../features/calendar/domain/public_event.dart';
 import '../../features/rooms/domain/room.dart';
 import '../providers.dart';
 import 'event_preview_sheet.dart';
+import 'month_calendar.dart';
 import 'shared.dart';
 
 class CalendarPage extends ConsumerStatefulWidget {
@@ -341,58 +342,63 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                       ),
             ],
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              IconButton(
-                tooltip: 'Попередній період',
-                onPressed: () => navigate(
-                  step == 0
-                      ? DateTime(focus.year, focus.month - 1, 1)
-                      : DateTime(focus.year, focus.month, focus.day - step),
+          if (!(view == 'month' && !isSchedule)) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                IconButton(
+                  tooltip: 'Попередній період',
+                  onPressed: () => navigate(
+                    step == 0
+                        ? DateTime(focus.year, focus.month - 1, 1)
+                        : DateTime(focus.year, focus.month, focus.day - step),
+                  ),
+                  icon: const Icon(Icons.chevron_left),
                 ),
-                icon: const Icon(Icons.chevron_left),
-              ),
-              Text(
-                periodLabel(),
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              IconButton(
-                tooltip: 'Наступний період',
-                onPressed: () => navigate(
-                  step == 0
-                      ? DateTime(focus.year, focus.month + 1, 1)
-                      : DateTime(focus.year, focus.month, focus.day + step),
+                Text(
+                  periodLabel(),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                icon: const Icon(Icons.chevron_right),
-              ),
-              OutlinedButton(
-                onPressed: () =>
-                    navigate(civil(TimeZoneService().toKyiv(DateTime.now()))),
-                child: const Text('Сьогодні'),
-              ),
-              OutlinedButton(
-                onPressed: () async {
-                  final date = await showDatePicker(
-                    context: context,
-                    initialDate: focus,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime(2100),
-                  );
-                  if (date != null && mounted) navigate(date, nextView: 'day');
-                },
-                child: const Text('Вибрати дату'),
-              ),
-              FilledButton(
-                onPressed: () => book(signedIn, admin),
-                child: const Text('Створити подію'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+                IconButton(
+                  tooltip: 'Наступний період',
+                  onPressed: () => navigate(
+                    step == 0
+                        ? DateTime(focus.year, focus.month + 1, 1)
+                        : DateTime(focus.year, focus.month, focus.day + step),
+                  ),
+                  icon: const Icon(Icons.chevron_right),
+                ),
+                OutlinedButton(
+                  onPressed: () =>
+                      navigate(civil(TimeZoneService().toKyiv(DateTime.now()))),
+                  child: const Text('Сьогодні'),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: focus,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                    );
+                    if (date != null && mounted) {
+                      navigate(date, nextView: 'day');
+                    }
+                  },
+                  child: const Text('Вибрати дату'),
+                ),
+                FilledButton(
+                  onPressed: () => book(signedIn, admin),
+                  child: const Text('Створити подію'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ] else
+            const SizedBox(height: 12),
           TextField(
             controller: searchController,
             decoration: InputDecoration(
@@ -618,19 +624,32 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 final shown = visibleEvents();
                 return Column(
                   children: [
-                    if (!wide && (view == 'month' || view == 'week'))
-                      _CompactCalendar(
-                        focus: focus,
-                        week: view == 'week',
-                        events: shown,
-                        onDay: (date) => navigate(date, nextView: 'day'),
-                      ),
-                    if (wide && view == 'month')
-                      _MonthGrid(
+                    if (view == 'month')
+                      MiMonthCalendar(
                         month: DateTime(focus.year, focus.month),
                         events: shown,
-                        pagePath: widget.pagePath,
-                        onEventTap: (event) => showEventPreview(context, event),
+                        onPrevMonth: () => navigate(
+                          DateTime(focus.year, focus.month - 1, 1),
+                        ),
+                        onNextMonth: () => navigate(
+                          DateTime(focus.year, focus.month + 1, 1),
+                        ),
+                        onToday: () => navigate(
+                          civil(TimeZoneService().toKyiv(DateTime.now())),
+                          nextView: 'month',
+                        ),
+                        onCreateEvent: () => book(signedIn, admin),
+                        onDayTap: (date) =>
+                            navigate(date, nextView: 'day'),
+                        onEventTap: (event) =>
+                            showEventPreview(context, event),
+                      ),
+                    if (!wide && view == 'week')
+                      _CompactCalendar(
+                        focus: focus,
+                        week: true,
+                        events: shown,
+                        onDay: (date) => navigate(date, nextView: 'day'),
                       ),
                     if (wide && view == 'week')
                       _WeekGrid(
@@ -681,150 +700,6 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               child: Text(isSchedule ? 'Оновити розклад' : 'Оновити календар'),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _MonthGrid extends StatelessWidget {
-  const _MonthGrid({
-    required this.month,
-    required this.events,
-    required this.pagePath,
-    required this.onEventTap,
-  });
-  final DateTime month;
-  final List<PublicEvent> events;
-  final String pagePath;
-  final ValueChanged<PublicEvent> onEventTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final offset = month.weekday - 1;
-    final days = DateTime(month.year, month.month + 1, 0).day;
-    final length = ((offset + days + 6) ~/ 7) * 7;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              for (var i = 0; i < 7; i++)
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.all(2),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: scheduleDayColors[i],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      const ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'][i],
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisExtent: 112,
-            ),
-            itemCount: length,
-            itemBuilder: (context, index) {
-              final day = index - offset + 1;
-              if (day < 1 || day > days) return const SizedBox.shrink();
-              final start = tz.TZDateTime(
-                    tz.getLocation('Europe/Kyiv'),
-                    month.year,
-                    month.month,
-                    day,
-                  ).toUtc(),
-                  end = tz.TZDateTime(
-                    tz.getLocation('Europe/Kyiv'),
-                    month.year,
-                    month.month,
-                    day + 1,
-                  ).toUtc();
-              final todayEvents = events
-                  .where(
-                    (event) =>
-                        event.interval.start.isBefore(end) &&
-                        event.interval.end.isAfter(start),
-                  )
-                  .toList();
-              final cellDay = DateTime(month.year, month.month, day);
-              return Container(
-                margin: const EdgeInsets.all(2),
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: _weekdayCellColor(cellDay),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    InkWell(
-                      onTap: () => context.go(
-                        Uri(
-                          path: pagePath,
-                          queryParameters: {
-                            ...GoRouterState.of(context).uri.queryParameters,
-                            'date': DateFormat('yyyy-MM-dd')
-                                .format(cellDay),
-                            'view': 'day',
-                          },
-                        ).toString(),
-                      ),
-                      child: _CalendarDayLabel(cellDay),
-                    ),
-                    for (final event in todayEvents.take(2))
-                      InkWell(
-                        onTap: () => onEventTap(event),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 3),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _eventDirectionTint(context, event),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              '${localTime(event.interval.start)} ${event.title}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: _calendarEventStyle(
-                                context,
-                                DateTime(month.year, month.month, day),
-                              )?.copyWith(
-                                color: _eventDirectionFg(context, event),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (todayEvents.length > 2)
-                      Text(
-                        '+${todayEvents.length - 2} — оберіть день',
-                        style: _calendarEventStyle(
-                          context,
-                          DateTime(month.year, month.month, day),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
         ],
       ),
     );

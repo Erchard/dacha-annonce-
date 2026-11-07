@@ -126,6 +126,41 @@ class SupportRepository {
         );
       });
 
+  /// Tickets whose status is one of [statuses], newest activity first.
+  Future<Page<Ticket>> listByStatuses(
+    PageRequest page, {
+    required List<String> statuses,
+  }) => firestoreCall(() async {
+    if (statuses.isEmpty ||
+        statuses.any((s) => !ticketStatuses.contains(s))) {
+      throw const DomainException(ErrorCode.validation, field: 'status');
+    }
+    final sorted = [...statuses]..sort();
+    final key = 'support:in:${sorted.join(',')}';
+    Query<Map<String, dynamic>> q = db
+        .collection('supportTickets')
+        .where('status', whereIn: sorted)
+        .orderBy('lastActivityAt', descending: true)
+        .orderBy(FieldPath.documentId);
+    if (page.after case final c?) {
+      if (c.queryKey != key) {
+        throw const DomainException(ErrorCode.validation, field: 'cursor');
+      }
+      q = q.startAfter([c.value, c.id]);
+    }
+    final docs = (await q.limit(page.limit).get()).docs;
+    return Page(
+      docs.map((d) => Ticket(d.id, d.data())),
+      docs.length == page.limit
+          ? PageCursor(
+              queryKey: key,
+              value: docs.last.data()['lastActivityAt'],
+              id: docs.last.id,
+            )
+          : null,
+    );
+  });
+
   /// Own tickets for the signed-in author (organizer feedback replies).
   Future<Page<Ticket>> listMine(PageRequest page) => firestoreCall(() async {
     final uid = auth.currentUser?.uid;

@@ -168,3 +168,12 @@ Production `dacha-annonce`: Hosting «MI Nov-6 colorful calendar + photo size di
 - Місячний календар: пастельні колонки за днем тижня (`scheduleDayColors`).
 - Діалог при фото >700 КБ (support + cover).
 - Закрито: 6lQTxk…, NyVqHl… (`done`); CH1g5R… (`done` → `closed`).
+
+## MI tickets 07.11 — help / support sections / month UI
+
+Production `dacha-annonce`: Hosting «MI Nov-7 help photo, support sections, month calendar UI».
+
+- `/help`: секція «Фото».
+- `/support`: секції Нові → Виконано → Інші (`listByStatuses` whereIn).
+- Календар місяць: `MiMonthCalendar` (синя шапка, HEX MI, логотип-дах).
+- Закрито (`done`): qrwdahM…, RBquX7…, wUpR4G….

@@ -63,34 +63,64 @@ class SupportPage extends ConsumerStatefulWidget {
 }
 
 class _SupportPageState extends ConsumerState<SupportPage> {
-  List<Ticket> tickets = [];
-  PageCursor? next;
+  static const _otherStatuses = [
+    'accepted',
+    'in_progress',
+    'rejected',
+    'closed',
+  ];
+
   String? status;
+  List<Ticket> filtered = [];
+  PageCursor? filteredNext;
+  List<Ticket> news = [], dones = [], others = [];
+  PageCursor? newsNext, donesNext, othersNext;
   Object? error;
   bool busy = true;
+
+  bool get allSections => status == null;
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => load(true));
+    Future.microtask(() => reload());
   }
 
-  Future<void> load(bool reset) async {
+  Future<void> reload() async {
     setState(() {
       busy = true;
       error = null;
-      if (reset) {
-        tickets = [];
-        next = null;
-      }
+      filtered = [];
+      filteredNext = null;
+      news = [];
+      dones = [];
+      others = [];
+      newsNext = donesNext = othersNext = null;
     });
     try {
-      final page = await ref
-          .read(supportRepositoryProvider)
-          .list(PageRequest(after: next), status: status);
-      if (mounted) {
+      final repo = ref.read(supportRepositoryProvider);
+      if (allSections) {
+        final n = await repo.list(PageRequest(), status: 'new');
+        final d = await repo.list(PageRequest(), status: 'done');
+        final o = await repo.listByStatuses(
+          PageRequest(),
+          statuses: _otherStatuses,
+        );
+        if (!mounted) return;
         setState(() {
-          tickets = [...tickets, ...page.items];
-          next = page.next;
+          news = n.items;
+          newsNext = n.next;
+          dones = d.items;
+          donesNext = d.next;
+          others = o.items;
+          othersNext = o.next;
+        });
+      } else {
+        final page = await repo.list(PageRequest(), status: status);
+        if (!mounted) return;
+        setState(() {
+          filtered = page.items;
+          filteredNext = page.next;
         });
       }
     } catch (e) {
@@ -100,6 +130,150 @@ class _SupportPageState extends ConsumerState<SupportPage> {
     }
   }
 
+  Future<void> loadMoreFiltered() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final page = await ref
+          .read(supportRepositoryProvider)
+          .list(PageRequest(after: filteredNext), status: status);
+      if (mounted) {
+        setState(() {
+          filtered = [...filtered, ...page.items];
+          filteredNext = page.next;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> loadMoreSection(String section) async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final repo = ref.read(supportRepositoryProvider);
+      if (section == 'new') {
+        final page = await repo.list(
+          PageRequest(after: newsNext),
+          status: 'new',
+        );
+        if (mounted) {
+          setState(() {
+            news = [...news, ...page.items];
+            newsNext = page.next;
+          });
+        }
+      } else if (section == 'done') {
+        final page = await repo.list(
+          PageRequest(after: donesNext),
+          status: 'done',
+        );
+        if (mounted) {
+          setState(() {
+            dones = [...dones, ...page.items];
+            donesNext = page.next;
+          });
+        }
+      } else {
+        final page = await repo.listByStatuses(
+          PageRequest(after: othersNext),
+          statuses: _otherStatuses,
+        );
+        if (mounted) {
+          setState(() {
+            others = [...others, ...page.items];
+            othersNext = page.next;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> withdraw(Ticket t) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await confirmAction(
+      context,
+      'Видалити звернення?',
+      'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.',
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await ref.read(supportRepositoryProvider).status(t, 'closed');
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Звернення закрито.')),
+      );
+      await reload();
+    } catch (e) {
+      if (mounted) setState(() => error = e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Widget ticketCard(Ticket t) {
+    final isAdmin =
+        ref.watch(profileProvider).asData?.value?.role == UserRole.admin;
+    return Card(
+      child: AppLinkTap(
+        to: '/support/${t.id}',
+        builder: (context, onTap) => ListTile(
+          title: Text(t.title),
+          subtitle: Text(
+            '${ticketStatusLabel(t.status)} · ${priorityLabel(t.priority)} · ${localDate(t.lastActivityAt)}',
+          ),
+          onTap: onTap,
+          trailing: isAdmin && t.status == 'new'
+              ? IconButton(
+                  tooltip: 'Видалити звернення',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: busy ? null : () => withdraw(t),
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget sectionBlock({
+    required String title,
+    required List<Ticket> items,
+    required PageCursor? next,
+    required String sectionKey,
+    required String empty,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const SizedBox(height: 16),
+      Text(title, style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 8),
+      if (items.isEmpty) Text(empty),
+      for (final t in items) ticketCard(t),
+      if (next != null)
+        TextButton(
+          onPressed: busy ? null : () => loadMoreSection(sectionKey),
+          child: const Text('Завантажити ще'),
+        ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) => AppFrame(
     title: 'Звернення',
@@ -107,7 +281,8 @@ class _SupportPageState extends ConsumerState<SupportPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Звернення бачать адміністрація та розробник. Сюди також потрапляють «Зауваження та пропозиції» від користувачів.',
+          'Звернення бачать адміністрація та розробник. Сюди також потрапляють «Зауваження та пропозиції» від користувачів. '
+          'Без фільтра спочатку нові, далі виконані, потім інші статуси.',
         ),
         const SizedBox(height: 16),
         Wrap(
@@ -127,7 +302,7 @@ class _SupportPageState extends ConsumerState<SupportPage> {
                   ? null
                   : (v) {
                       status = v;
-                      load(true);
+                      reload();
                     },
               items: [
                 const DropdownMenuItem(value: null, child: Text('Усі статуси')),
@@ -136,79 +311,45 @@ class _SupportPageState extends ConsumerState<SupportPage> {
               ],
             ),
             TextButton(
-              onPressed: busy ? null : () => load(true),
+              onPressed: busy ? null : reload,
               child: const Text('Оновити'),
             ),
           ],
         ),
         if (busy) const LinearProgressIndicator(),
-        if (error != null) Problem(error!, retry: () => load(true)),
-        if (!busy && error == null && tickets.isEmpty)
-          const Text('Звернень поки немає.'),
-        for (final t in tickets)
-          Card(
-            child: AppLinkTap(
-              to: '/support/${t.id}',
-              builder: (context, onTap) => ListTile(
-                title: Text(t.title),
-                subtitle: Text(
-                  '${ticketStatusLabel(t.status)} · ${priorityLabel(t.priority)} · ${localDate(t.lastActivityAt)}',
-                ),
-                onTap: onTap,
-                trailing:
-                    ref.watch(profileProvider).asData?.value?.role ==
-                            UserRole.admin &&
-                        t.status == 'new'
-                    ? IconButton(
-                        tooltip: 'Видалити звернення',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: busy
-                            ? null
-                            : () async {
-                                final messenger = ScaffoldMessenger.of(
-                                  this.context,
-                                );
-                                if (!await confirmAction(
-                                  this.context,
-                                  'Видалити звернення?',
-                                  'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.',
-                                )) {
-                                  return;
-                                }
-                                if (!mounted) return;
-                                setState(() {
-                                  busy = true;
-                                  error = null;
-                                });
-                                try {
-                                  await ref
-                                      .read(supportRepositoryProvider)
-                                      .status(t, 'closed');
-                                  if (!mounted) return;
-                                  messenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Звернення закрито.'),
-                                    ),
-                                  );
-                                  await load(true);
-                                } catch (e) {
-                                  if (mounted) setState(() => error = e);
-                                } finally {
-                                  if (mounted) {
-                                    setState(() => busy = false);
-                                  }
-                                }
-                              },
-                      )
-                    : null,
-              ),
+        if (error != null) Problem(error!, retry: reload),
+        if (!busy && error == null && allSections) ...[
+          sectionBlock(
+            title: 'Нові',
+            items: news,
+            next: newsNext,
+            sectionKey: 'new',
+            empty: 'Нових звернень немає.',
+          ),
+          sectionBlock(
+            title: 'Виконано',
+            items: dones,
+            next: donesNext,
+            sectionKey: 'done',
+            empty: 'Немає виконаних звернень.',
+          ),
+          sectionBlock(
+            title: 'Інші',
+            items: others,
+            next: othersNext,
+            sectionKey: 'other',
+            empty: 'Немає звернень в інших статусах.',
+          ),
+        ],
+        if (!busy && error == null && !allSections) ...[
+          if (filtered.isEmpty) const Text('Звернень з цим статусом немає.'),
+          for (final t in filtered) ticketCard(t),
+          if (filteredNext != null)
+            TextButton(
+              onPressed: busy ? null : loadMoreFiltered,
+              child: const Text('Завантажити ще'),
             ),
-          ),
-        if (next != null)
-          TextButton(
-            onPressed: busy ? null : () => load(false),
-            child: const Text('Завантажити ще'),
-          ),
+        ],
       ],
     ),
   );

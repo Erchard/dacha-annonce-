@@ -171,7 +171,7 @@ Production `dacha-annonce`: Hosting «MI Nov-6 colorful calendar + photo size di
 
 ## MI tickets 07.11 — help / support sections / month UI
 
-Production `dacha-annonce`: Hosting «MI Nov-7 help photo, support sections, month calendar UI».
+Production `dacha-annonce`: Hosting «MI Nov-7 help photo, support sections, month calendar UI». Commit `8d9531c`. main.dart.js SHA256: `E2788F879C6E5DD0CDFADE0842A1E11AD175BCF89266C942F7BF6857A13BF221`.
 
 - `/help`: секція «Фото».
 - `/support`: секції Нові → Виконано → Інші (`listByStatuses` whereIn).

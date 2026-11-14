@@ -34,6 +34,7 @@ String typeLabel(String value) => switch (value) {
   'bug' => 'Помилка',
   'feature' => 'Пропозиція',
   'feedback' => 'Відгук',
+  'general' => 'Загальні питання',
   _ => value,
 };
 
@@ -205,7 +206,7 @@ class _SupportPageState extends ConsumerState<SupportPage> {
     if (!await confirmAction(
       context,
       'Видалити звернення?',
-      'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.',
+      'Звернення буде видалено остаточно разом з історією й вкладеннями. Відновити його буде неможливо.',
     )) {
       return;
     }
@@ -215,10 +216,10 @@ class _SupportPageState extends ConsumerState<SupportPage> {
       error = null;
     });
     try {
-      await ref.read(supportRepositoryProvider).status(t, 'closed');
+      await ref.read(supportRepositoryProvider).purgeNewTicket(t);
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('Звернення закрито.')),
+        const SnackBar(content: Text('Звернення видалено остаточно.')),
       );
       await reload();
     } catch (e) {
@@ -1026,7 +1027,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                 const Padding(
                   padding: EdgeInsets.only(bottom: 8),
                   child: Text(
-                    'Помилкове або тестове звернення зі статусом «Нове» можна прибрати кнопкою Видалити (запис лишається в історії). Також є іконка кошика в списку звернень.',
+                    'Помилкове або тестове звернення зі статусом «Нове» можна прибрати кнопкою Видалити — запис знищується остаточно. Також є іконка кошика в списку звернень.',
                     style: TextStyle(fontSize: 13),
                   ),
                 ),
@@ -1043,6 +1044,46 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                     child: const Text('Додати коментар'),
                   ),
                 if (isStaff && role == 'admin' && t.status == 'new')
+                  FilledButton.tonalIcon(
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            if (!await confirmAction(
+                              context,
+                              'Видалити звернення?',
+                              'Звернення буде видалено остаточно разом з історією й вкладеннями. Відновити його буде неможливо.',
+                            )) {
+                              return;
+                            }
+                            setState(() {
+                              busy = true;
+                              error = null;
+                            });
+                            try {
+                              await ref
+                                  .read(supportRepositoryProvider)
+                                  .purgeNewTicket(t);
+                              if (!mounted) return;
+                              final messenger = ScaffoldMessenger.of(context);
+                              final router = GoRouter.of(context);
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Звернення видалено остаточно.',
+                                  ),
+                                ),
+                              );
+                              router.go('/support');
+                            } catch (e) {
+                              if (mounted) setState(() => error = e);
+                            } finally {
+                              if (mounted) setState(() => busy = false);
+                            }
+                          },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Видалити'),
+                  ),
+                if (isStaff && role == 'admin' && t.status == 'new')
                   OutlinedButton(
                     onPressed: busy
                         ? null
@@ -1053,46 +1094,69 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                             final bodyCtrl = TextEditingController(
                               text: t.body,
                             );
+                            var editType = t.type;
                             final saved = await showDialog<bool>(
                               context: context,
-                              builder: (context) => AlertDialog(
-                                title: const Text('Редагувати звернення'),
-                                content: SizedBox(
-                                  width: 480,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      TextField(
-                                        controller: titleCtrl,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Тема',
+                              builder: (context) => StatefulBuilder(
+                                builder: (context, setDialogState) =>
+                                    AlertDialog(
+                                  title: const Text('Редагувати звернення'),
+                                  content: SizedBox(
+                                    width: 480,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        DropdownButtonFormField<String>(
+                                          initialValue: editType,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Тип',
+                                          ),
+                                          items: [
+                                            for (final type in ticketTypes)
+                                              DropdownMenuItem(
+                                                value: type,
+                                                child: Text(typeLabel(type)),
+                                              ),
+                                          ],
+                                          onChanged: (value) {
+                                            if (value == null) return;
+                                            setDialogState(
+                                              () => editType = value,
+                                            );
+                                          },
                                         ),
-                                        maxLength: 160,
-                                      ),
-                                      TextField(
-                                        controller: bodyCtrl,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Опис',
+                                        TextField(
+                                          controller: titleCtrl,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Тема',
+                                          ),
+                                          maxLength: 160,
                                         ),
-                                        minLines: 4,
-                                        maxLines: 10,
-                                        maxLength: 10000,
-                                      ),
-                                    ],
+                                        TextField(
+                                          controller: bodyCtrl,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Опис',
+                                          ),
+                                          minLines: 4,
+                                          maxLines: 10,
+                                          maxLength: 10000,
+                                        ),
+                                      ],
+                                    ),
                                   ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('Скасувати'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text('Зберегти'),
+                                    ),
+                                  ],
                                 ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, false),
-                                    child: const Text('Скасувати'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, true),
-                                    child: const Text('Зберегти'),
-                                  ),
-                                ],
                               ),
                             );
                             if (saved == true) {
@@ -1101,6 +1165,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                                   ticket,
                                   title: titleCtrl.text,
                                   body: bodyCtrl.text,
+                                  type: editType,
                                 ),
                               );
                             }
@@ -1113,16 +1178,10 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                   for (final status in allowedTicketStatuses(role, t.status))
                     Builder(
                       builder: (context) {
-                        final withdrawing =
-                            role == 'admin' &&
-                            t.status == 'new' &&
-                            status == 'closed';
                         final reopening =
                             status == 'new' &&
                             ['done', 'rejected', 'closed'].contains(t.status);
-                        final label = withdrawing
-                            ? 'Видалити'
-                            : reopening
+                        final label = reopening
                             ? 'Відкрити повторно'
                             : status == 'closed'
                             ? 'Закрити'
@@ -1149,14 +1208,10 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                           }
                           if (await confirmAction(
                             context,
-                            withdrawing
-                                ? 'Видалити звернення?'
-                                : status == 'closed'
+                            status == 'closed'
                                 ? 'Закрити звернення?'
                                 : 'Змінити статус?',
-                            withdrawing
-                                ? 'Звернення буде закрито й зникне з активних. Це для зайвих або дубльованих заявок. Фізично запис не знищується.'
-                                : status == 'closed'
+                            status == 'closed'
                                 ? 'Після перевірки звернення можна закрити. Статус стане «Закрито».'
                                 : label,
                           )) {
@@ -1168,20 +1223,10 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                                     ? null
                                     : comment.text,
                               ),
-                              successMessage: withdrawing
-                                  ? 'Звернення закрито.'
-                                  : null,
                             );
                           }
                         }
 
-                        if (withdrawing) {
-                          return FilledButton.tonalIcon(
-                            onPressed: busy ? null : onPressed,
-                            icon: const Icon(Icons.delete_outline),
-                            label: Text(label),
-                          );
-                        }
                         return OutlinedButton(
                           onPressed: busy ? null : onPressed,
                           child: Text(label),

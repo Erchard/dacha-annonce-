@@ -45,6 +45,7 @@ test('support roles, bounded queries and creation validation',async()=>{
 test('organizer can create feedback, list own tickets and read comments',async()=>{
  await assertSucceeds(cmd('owner','created',{type:'feedback'},'fb-owner'));
  await assertFails(cmd('owner','created',{type:'bug'},'fb-bug'));
+ await assertFails(cmd('owner','created',{type:'general'},'fb-general'));
  const owner=dbFor(env,'owner');
  await assertSucceeds(getDoc(doc(owner,'supportTickets/fb-owner')));
  await assertSucceeds(getDocs(query(collection(owner,'supportTickets'),where('createdBy','==','owner'),orderBy('lastActivityAt','desc'),limit(25))));
@@ -54,6 +55,18 @@ test('organizer can create feedback, list own tickets and read comments',async()
  const other=dbFor(env,'other');
  await assertFails(getDoc(doc(other,'supportTickets/fb-owner')));
  await assertFails(getDocs(query(collection(other,'supportTickets/fb-owner/comments'),limit(25))));
+});
+test('admin can create general questions type; organizer cannot',async()=>{
+ await assertSucceeds(cmd('admin','created',{type:'general'},'gen-admin'));
+ await assertFails(cmd('owner','created',{type:'general'},'gen-org'));
+ await assertFails(cmd('developer','created',{type:'general'},'gen-dev'));
+});
+test('admin can edit type on new ticket; not after accept',async()=>{
+ await created();
+ await assertSucceeds(cmd('admin','edited',{expectedVersion:1,type:'general',title:'Оновлена тема звернення',body:'Оновлений опис звернення для тесту.'}));
+ await assertFails(cmd('developer','edited',{expectedVersion:2,type:'bug',title:'Тема від розробника',body:'Опис від розробника має бути довгим.'}));
+ await cmd('developer','status_changed',{expectedVersion:2,status:'accepted'});
+ await assertFails(cmd('admin','edited',{expectedVersion:3,type:'feature',title:'Після прийняття',body:'Тип уже не можна змінити поза new.'}));
 });
 test('comments and priority require exact atomic history and correct actor',async()=>{
  await created();
@@ -76,7 +89,7 @@ test('concurrent comments detect stale version and never silently overwrite',asy
 
 test('every support status edge matches the role transition table',async()=>{
  const statuses=['new','accepted','in_progress','done','rejected','closed'];
- const allowed={admin:{new:['closed'],done:['closed','new'],rejected:['closed','new'],closed:['new']},developer:{new:['accepted','in_progress','rejected'],accepted:['in_progress','rejected'],in_progress:['done'],done:['closed','new'],rejected:['closed','new'],closed:['new']}};
+ const allowed={admin:{done:['closed','new'],rejected:['closed','new'],closed:['new']},developer:{new:['accepted','in_progress','rejected'],accepted:['in_progress','rejected'],in_progress:['done'],done:['closed','new'],rejected:['closed','new'],closed:['new']}};
  await created();const fixture=(await getDoc(doc(dbFor(env,'admin'),'supportTickets/ticket'))).data();
  for(const role of ['admin','developer'])for(const from of statuses)for(const to of statuses){
   const id=`${role}-${from}-${to}`;
@@ -84,4 +97,15 @@ test('every support status edge matches the role transition table',async()=>{
   const operation=cmd(role,'status_changed',{expectedVersion:1,status:to,comment:'Пояснення переходу статусу'},id);
   if(allowed[role][from]?.includes(to))await assertSucceeds(operation);else await assertFails(operation);
  }
+});
+test('admin can hard-delete new ticket and its subdocs; not after accept',async()=>{
+ await created();
+ const admin=dbFor(env,'admin');
+ await assertSucceeds(deleteDoc(doc(admin,'supportTickets/ticket/history/1')));
+ await assertSucceeds(deleteDoc(doc(admin,'supportTickets/ticket')));
+ await cmd('admin','created',{},'keep-new');
+ await cmd('developer','status_changed',{expectedVersion:1,status:'accepted'},'keep-new');
+ await assertFails(deleteDoc(doc(admin,'supportTickets/keep-new/history/1')));
+ await assertFails(deleteDoc(doc(admin,'supportTickets/keep-new')));
+ await assertFails(deleteDoc(doc(dbFor(env,'owner'),'supportTickets/keep-new')));
 });

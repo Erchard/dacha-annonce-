@@ -37,7 +37,7 @@ class CalendarPage extends ConsumerStatefulWidget {
 }
 
 class _CalendarPageState extends ConsumerState<CalendarPage> {
-  static const views = {'day', 'week', 'month', 'list'};
+  static const views = {'day', 'week', 'month'};
   late DateTime focus;
   late String view;
   List<PublicEvent> events = [];
@@ -279,14 +279,11 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
       'week' => 7,
       _ => 0,
     };
-    final viewChoices = isSchedule
-        ? const [('day', 'День'), ('week', 'Тиждень'), ('month', 'Місяць')]
-        : const [
-            ('day', 'День'),
-            ('week', 'Тиждень'),
-            ('month', 'Місяць'),
-            ('list', 'Список'),
-          ];
+    final viewChoices = const [
+      ('day', 'День'),
+      ('week', 'Тиждень'),
+      ('month', 'Місяць'),
+    ];
     return AppFrame(
       backgroundColor: isSchedule ? scheduleCream : null,
       title: isArchive
@@ -340,6 +337,23 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                         onPressed: () => navigate(focus, nextView: item.$1),
                         child: Text(item.$2),
                       ),
+              if (!isSchedule)
+                OutlinedButton(
+                  onPressed: () {
+                    final params = <String, String>{
+                      'view': 'month',
+                      'date': DateFormat('yyyy-MM-dd').format(focus),
+                      if (widget.roomId != null &&
+                          widget.roomId!.trim().isNotEmpty)
+                        'room': widget.roomId!,
+                    };
+                    context.go(
+                      Uri(path: '/schedule', queryParameters: params)
+                          .toString(),
+                    );
+                  },
+                  child: const Text('Розклад'),
+                ),
             ],
           ),
           if (!(view == 'month' && !isSchedule)) ...[
@@ -489,7 +503,8 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                                       spacing: 8,
                                       runSpacing: 4,
                                       children: [
-                                        for (final direction in eventDirections)
+                                        for (final direction
+                                            in eventDirectionOptions)
                                           DirectionChip(
                                             direction: direction,
                                             selected: next.contains(direction),
@@ -657,31 +672,47 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                         events: shown,
                         onEventTap: (event) => showEventPreview(context, event),
                       ),
-                    if (view == 'day' || view == 'list')
+                    if (view == 'day')
                       for (final event in shown)
-                        Card(
-                          child: ListTile(
-                            isThreeLine: true,
-                            title: Text(
-                              '${localDate(event.interval.start)} · ${localTime(event.interval.start)}–${localTime(event.interval.end)} · ${event.title}',
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${event.roomNameSnapshot}${event.responsibleName.isEmpty ? '' : ' · ${event.responsibleName}'}',
+                        Builder(
+                          builder: (context) {
+                            final kyiv = TimeZoneService().toKyiv(
+                              event.interval.start,
+                            );
+                            final day = DateTime(
+                              kyiv.year,
+                              kyiv.month,
+                              kyiv.day,
+                            );
+                            final past = _isPastCalendarDay(day);
+                            return Card(
+                              color: calendarWeekdayFill[day.weekday - 1],
+                              child: ListTile(
+                                isThreeLine: true,
+                                title: Text(
+                                  '${localDate(event.interval.start)} · ${localTime(event.interval.start)}–${localTime(event.interval.end)} · ${event.title}',
+                                  style: calendarEventTitleStyle(past: past),
                                 ),
-                                if (event.directions.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  DirectionChipWrap(
-                                    directions: event.directions,
-                                  ),
-                                ],
-                              ],
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => showEventPreview(context, event),
-                          ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${event.roomNameSnapshot}${event.responsibleName.isEmpty ? '' : ' · ${event.responsibleName}'}',
+                                    ),
+                                    if (event.directions.isNotEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      DirectionChipWrap(
+                                        directions: event.directions,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () =>
+                                    showEventPreview(context, event),
+                              ),
+                            );
+                          },
                         ),
                   ],
                 );
@@ -715,40 +746,16 @@ bool _isPastCalendarDay(DateTime day) {
   ).isBefore(DateTime(now.year, now.month, now.day));
 }
 
-/// Pastel weekday columns (same palette as schedule) for the month grid.
 Color _weekdayCellColor(DateTime day) {
-  final base = scheduleDayColors[day.weekday - 1];
+  final base = calendarWeekdayFill[day.weekday - 1];
   if (_isPastCalendarDay(day)) {
     return Color.lerp(base, const Color(0xfff5f5f0), 0.45) ?? base;
   }
   return base;
 }
 
-TextStyle? _calendarEventStyle(BuildContext context, DateTime day) {
-  final past = _isPastCalendarDay(day);
-  return Theme.of(context).textTheme.labelSmall?.copyWith(
-    fontWeight: past ? FontWeight.w400 : FontWeight.w700,
-    color: past ? Theme.of(context).colorScheme.outline : null,
-  );
-}
-
-Color _eventDirectionTint(BuildContext context, PublicEvent event) {
-  if (event.directions.isEmpty) {
-    return Theme.of(context).colorScheme.secondaryContainer;
-  }
-  return directionColors(event.directions.first).$1;
-}
-
-Color _eventDirectionFg(BuildContext context, PublicEvent event) {
-  final kyiv = TimeZoneService().toKyiv(event.interval.start);
-  if (_isPastCalendarDay(DateTime(kyiv.year, kyiv.month, kyiv.day))) {
-    return Theme.of(context).colorScheme.outline;
-  }
-  if (event.directions.isEmpty) {
-    return Theme.of(context).colorScheme.onSecondaryContainer;
-  }
-  return directionColors(event.directions.first).$2;
-}
+TextStyle _calendarEventStyle(DateTime day) =>
+    calendarEventTitleStyle(past: _isPastCalendarDay(day), fontSize: 12);
 
 String eventWhenLabel(PublicEvent event) {
   final startDate = localDate(event.interval.start);
@@ -868,29 +875,39 @@ class _WeekGrid extends StatelessWidget {
               event.interval.end.isAfter(start),
         )
         .toList();
+    final weekday = day.weekday - 1;
     return Container(
       margin: const EdgeInsets.all(2),
       padding: const EdgeInsets.all(6),
       constraints: const BoxConstraints(minHeight: 140),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(4),
+        color: calendarWeekdayFill[weekday],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: calendarWeekdayHeader[weekday]),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                DateFormat('E', 'uk').format(day),
-                style: TextStyle(
-                  color: _isPastCalendarDay(day)
-                      ? Theme.of(context).colorScheme.outline
-                      : null,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+            decoration: BoxDecoration(
+              color: calendarWeekdayHeader[weekday],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  DateFormat('E', 'uk').format(day),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              _CalendarDayLabel(day),
-            ],
+                const Spacer(),
+                _CalendarDayLabel(day),
+              ],
+            ),
           ),
           for (final event in todayEvents)
             InkWell(
@@ -901,7 +918,7 @@ class _WeekGrid extends StatelessWidget {
                   '${localTime(event.interval.start)} ${event.title}',
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: _calendarEventStyle(context, day),
+                  style: _calendarEventStyle(day),
                 ),
               ),
             ),
@@ -1000,10 +1017,24 @@ class _EventPageState extends ConsumerState<EventPage> {
             Text('${data.roomNameSnapshot} · ${data.locationSnapshot}'),
             if (data.responsibleName.isNotEmpty)
               Text('Відповідальний: ${data.responsibleName}'),
-            if (data.directions.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              DirectionChipWrap(directions: data.directions),
-            ],
+            Builder(
+              builder: (context) {
+                final meta = publicEventStructuredMeta(data);
+                if (meta.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < meta.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 6),
+                        meta[i],
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 24),
             Text(data.description),
             if (data.contactPhone.isNotEmpty)
@@ -1273,7 +1304,6 @@ class _CompactCalendar extends StatelessWidget {
     final days = week ? 7 : DateTime(focus.year, focus.month + 1, 0).day;
     final count = ((offset + days + 6) ~/ 7) * 7;
     final zone = TimeZoneService();
-    final scheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         const Text(
@@ -1288,16 +1318,16 @@ class _CompactCalendar extends StatelessWidget {
                   margin: const EdgeInsets.symmetric(horizontal: 1),
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   decoration: BoxDecoration(
-                    color: scheduleDayColors[i],
+                    color: calendarWeekdayHeader[i],
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Center(
                     child: Text(
                       const ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'][i],
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurface,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -1341,9 +1371,8 @@ class _CompactCalendar extends StatelessWidget {
                     color: _weekdayCellColor(date),
                     border: Border.all(
                       color: today
-                          ? scheme.primary
-                          : scheduleDayColors[date.weekday - 1]
-                                .withValues(alpha: 0.9),
+                          ? calendarTodayGreen
+                          : calendarWeekdayHeader[date.weekday - 1],
                       width: today ? 1.5 : 0.5,
                     ),
                     borderRadius: BorderRadius.circular(6),
@@ -1357,8 +1386,8 @@ class _CompactCalendar extends StatelessWidget {
                           height: 22,
                           alignment: Alignment.center,
                           decoration: today
-                              ? BoxDecoration(
-                                  color: scheme.primary,
+                              ? const BoxDecoration(
+                                  color: calendarTodayGreen,
                                   shape: BoxShape.circle,
                                 )
                               : null,
@@ -1371,10 +1400,10 @@ class _CompactCalendar extends StatelessWidget {
                                   ? FontWeight.w700
                                   : FontWeight.w600,
                               color: today
-                                  ? scheme.onPrimary
+                                  ? Colors.white
                                   : past
-                                  ? Colors.grey
-                                  : scheme.onSurface,
+                                  ? Colors.black45
+                                  : Colors.black87,
                             ),
                           ),
                         ),
@@ -1383,24 +1412,13 @@ class _CompactCalendar extends StatelessWidget {
                       for (final event in shown)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 2),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 2,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _eventDirectionTint(context, event),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              event.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 9,
-                                height: 1.1,
-                                color: _eventDirectionFg(context, event),
-                              ),
+                          child: Text(
+                            event.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: calendarEventTitleStyle(
+                              past: past,
+                              fontSize: 9,
                             ),
                           ),
                         ),
@@ -1410,7 +1428,9 @@ class _CompactCalendar extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w600,
-                            color: scheme.primary,
+                            color: past
+                                ? Colors.black45
+                                : calendarHeaderBlue,
                           ),
                         ),
                     ],

@@ -4,8 +4,37 @@ import 'package:go_router/go_router.dart';
 import '../../core/calendar/event_calendar_export.dart';
 import '../../core/web/share_actions.dart';
 import '../../core/widgets/direction_chip.dart';
+import '../../features/bookings/domain/event_details.dart';
 import '../../features/calendar/domain/public_event.dart';
 import 'shared.dart';
+
+/// Direction chips plus Nov13 structured fields (skips empty / default noise).
+List<Widget> publicEventStructuredMeta(PublicEvent event) {
+  final lines = <Widget>[];
+  if (event.directions.isNotEmpty) {
+    lines.add(DirectionChipWrap(directions: event.directions));
+  }
+  if (!event.hasStructuredFields) return lines;
+
+  void addLine(String label, String value) {
+    if (value.trim().isEmpty) return;
+    lines.add(Text('$label: $value'));
+  }
+
+  addLine('Умова участі', event.participationCondition);
+  if (event.announcementStatus != 'planned') {
+    addLine('Статус події', announcementStatusLabel(event.announcementStatus));
+  }
+  addLine('Формат', event.eventFormat);
+  final audiences = event.targetAudiences
+      .where((a) => a.trim().isNotEmpty)
+      .toList();
+  // Ticket asks to show audience; «Усі охочі» alone is still a real choice.
+  if (audiences.isNotEmpty) {
+    addLine('Цільова аудиторія', audiences.join(', '));
+  }
+  return lines;
+}
 
 Future<void> showEventPreview(BuildContext context, PublicEvent event) {
   return showModalBottomSheet<void>(
@@ -32,10 +61,24 @@ Future<void> showEventPreview(BuildContext context, PublicEvent event) {
           Text('${event.roomNameSnapshot} · ${event.locationSnapshot}'),
           if (event.responsibleName.isNotEmpty)
             Text('Відповідальний: ${event.responsibleName}'),
-          if (event.directions.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            DirectionChipWrap(directions: event.directions),
-          ],
+          Builder(
+            builder: (context) {
+              final meta = publicEventStructuredMeta(event);
+              if (meta.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < meta.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 4),
+                      meta[i],
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
           if (event.description.trim().isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(

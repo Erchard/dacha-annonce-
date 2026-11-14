@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../features/bookings/domain/event_details.dart';
+
 const _directionColors = <String, (Color, Color)>{
+  // Legacy tags (old documents)
   'Емоційна підтримка': (Color(0xFFECFDF5), Color(0xFF065F46)),
   'Екологія': (Color(0xFFF0FDF4), Color(0xFF166534)),
   'Культура': (Color(0xFFFFFBEB), Color(0xFF92400E)),
-  'Громадська активність': (Color(0xFFEFF6FF), Color(0xFF1E40AF)),
   'Освіта, просвіта': (Color(0xFFEEF2FF), Color(0xFF3730A3)),
   'Толока': (Color(0xFFF7FEE7), Color(0xFF3F6212)),
   'Благоустрій Дачі': (Color(0xFFF0FDFA), Color(0xFF115E59)),
@@ -16,6 +18,17 @@ const _directionColors = <String, (Color, Color)>{
   'Для молоді': (Color(0xFFECFEFF), Color(0xFF155E75)),
   'Творчі зустрічі': (Color(0xFFFDF4FF), Color(0xFF86198F)),
   'Концерт': (Color(0xFFFDF2F8), Color(0xFF9D174D)),
+  // Structured directions (new catalog)
+  'Громадська активність': (Color(0xFFEFF6FF), Color(0xFF1E40AF)),
+  'Культура та спадщина': (Color(0xFFFFFBEB), Color(0xFF92400E)),
+  'Освіта і просвіта': (Color(0xFFEEF2FF), Color(0xFF3730A3)),
+  'Екологія та зелені практики': (Color(0xFFF0FDF4), Color(0xFF166534)),
+  'Відновлення Дачі': (Color(0xFFF0FDFA), Color(0xFF115E59)),
+  'Психологічна підтримка та відновлення': (Color(0xFFFFF1F2), Color(0xFF9F1239)),
+  'Творчість і рукоділля': (Color(0xFFFDF4FF), Color(0xFF86198F)),
+  'Благодійність': (Color(0xFFFFF7ED), Color(0xFF9A3412)),
+  'Партнерство та співпраця': (Color(0xFFFAF5FF), Color(0xFF6B21A8)),
+  'Дозвілля та спілкування': (Color(0xFFECFEFF), Color(0xFF155E75)),
 };
 
 (Color, Color) directionColors(String direction) =>
@@ -76,16 +89,18 @@ class DirectionChipWrap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          for (final direction in directions)
-            DirectionChip(
-              direction: direction,
-              selected: selected?.contains(direction) ?? false,
-              onTap: onToggle == null ? null : () => onToggle!(direction),
-            ),
-        ],
-      );
+    spacing: 6,
+    runSpacing: 6,
+    children: [
+      for (final direction in directions)
+        DirectionChip(
+          direction: direction,
+          selected: selected?.contains(direction) ?? false,
+          onTap: onToggle == null ? null : () => onToggle!(direction),
+        ),
+    ],
+  );
 }
 
+/// Filter catalog for schedule/analytics (structured directions).
+List<String> get scheduleDirectionFilterOptions => eventDirectionOptions;

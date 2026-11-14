@@ -16,6 +16,11 @@ class BookingDto {
     'contactPhone',
     'notes',
     'directions',
+    'participationCondition',
+    'announcementStatus',
+    'eventDirection',
+    'eventFormat',
+    'targetAudiences',
     'coverImageBytes',
     'coverImageContentType',
     'coverImageFileName',
@@ -56,24 +61,66 @@ class BookingDto {
     'coverImageFileName': cover?.fileName,
   };
 
+  static Map<String, dynamic> structuredFields(BookingDraft draft) => {
+    'participationCondition': draft.participationCondition,
+    'announcementStatus': draft.announcementStatus,
+    'eventDirection': draft.eventDirection,
+    'eventFormat': draft.eventFormat,
+    'targetAudiences': draft.targetAudiences,
+  };
+
+  static BookingDraft draftFrom(Map<String, dynamic> data, Fields f) {
+    final hasStructured = data.containsKey('eventDirection');
+    final legacy = checkedDirections(
+      f.value<List<dynamic>>('directions'),
+    );
+    return BookingDraft(
+      roomId: f.value('roomId'),
+      title: f.value('title'),
+      description: f.value('description'),
+      responsibleName: f.value('responsibleName'),
+      contactPhone: f.value('contactPhone'),
+      notes: f.value('notes'),
+      legacyDirections: hasStructured ? const [] : legacy,
+      participationCondition: f.value('participationCondition'),
+      announcementStatus: f.value('announcementStatus'),
+      eventDirection: f.value('eventDirection'),
+      eventFormat: f.value('eventFormat'),
+      targetAudiences: List<String>.from(
+        f.value<List<dynamic>>('targetAudiences'),
+      ),
+      coverImage: coverFrom(f.data),
+      interval: BookingInterval(f.time('startAt'), f.time('endAt')),
+    );
+  }
+
+  static Map<String, dynamic> _merged(Map<String, dynamic> data) => {
+    for (final key in keys) key: null,
+    'contactPhone': '',
+    'notes': '',
+    'directions': <String>[],
+    'participationCondition': participationConditionOptions.first,
+    'announcementStatus': 'planned',
+    'eventDirection': eventDirectionOptions.first,
+    'eventFormat': eventFormatOptions.first,
+    'targetAudiences': <String>[allWelcomeAudience],
+    'responsibleName': '',
+    'roomNameSnapshot': '',
+    'locationSnapshot': '',
+    for (final entry in data.entries)
+      if (keys.contains(entry.key)) entry.key: entry.value,
+  };
+
   static Booking decode(String id, Map<String, dynamic> data) {
-    final f = Fields({
-      'contactPhone': '',
-      'notes': '',
-      'directions': <String>[],
-      'coverImageBytes': null,
-      'coverImageContentType': null,
-      'coverImageFileName': null,
-      ...data,
-    }, keys);
+    final f = Fields(_merged(data), keys);
     if (f.value<String>('timeZone') != 'Europe/Kyiv' ||
         f.value<int>('version') < 1) {
       throw const DomainException(ErrorCode.validation, field: 'booking');
     }
-    final interval = BookingInterval(f.time('startAt'), f.time('endAt'));
+    final draft = draftFrom(data, f);
     final blockIds = f.value<List<dynamic>>('occupancyBlockIds');
     if (blockIds.any((v) => v is! String) ||
-        blockIds.join(',') != interval.blockIds.join(',')) {
+        blockIds.join(',') != draft.interval.blockIds.join(',')) {
       throw const DomainException(
         ErrorCode.validation,
         field: 'occupancyBlockIds',
@@ -83,17 +130,7 @@ class BookingDto {
       id: id,
       roomNameSnapshot: f.value<String>('roomNameSnapshot'),
       organizerId: f.value('organizerId'),
-      draft: BookingDraft(
-        roomId: f.value('roomId'),
-        title: f.value('title'),
-        description: f.value('description'),
-        responsibleName: f.value('responsibleName'),
-        contactPhone: f.value('contactPhone'),
-        notes: f.value('notes'),
-        directions: checkedDirections(f.value<List<dynamic>>('directions')),
-        coverImage: coverFrom(f.data),
-        interval: interval,
-      ),
+      draft: draft,
       status: f.enumeration('status', BookingStatus.values),
       version: f.value('version'),
       createdAt: f.time('createdAt'),

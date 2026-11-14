@@ -186,7 +186,7 @@ class BookingService {
           'responsibleName': selected.responsibleName,
           'contactPhone': selected.contactPhone,
           'notes': selected.notes,
-          'directions': selected.directions,
+          ...BookingDto.structuredFields(selected),
           ...BookingDto.coverFields(selected.coverImage),
           'startAt': Timestamp.fromDate(selected.interval.start),
           'endAt': Timestamp.fromDate(selected.interval.end),
@@ -196,6 +196,12 @@ class BookingService {
         'updatedAt': now,
         'updatedBy': user.uid,
       };
+      // New create/edit writes structured fields without legacy directions.
+      if (creating ||
+          action == BookingAction.edit ||
+          action == BookingAction.reschedule) {
+        next.remove('directions');
+      }
       if (action == BookingAction.createApproved ||
           action == BookingAction.approve) {
         next['status'] = 'approved';
@@ -346,7 +352,11 @@ class BookingService {
             key: next[key],
           'contactPhone': next['contactPhone'] ?? '',
           'notes': next['notes'] ?? '',
-          'directions': next['directions'] ?? <String>[],
+          'participationCondition': next['participationCondition'],
+          'announcementStatus': next['announcementStatus'],
+          'eventDirection': next['eventDirection'],
+          'eventFormat': next['eventFormat'],
+          'targetAudiences': next['targetAudiences'],
           'coverImageBytes': next['coverImageBytes'],
           'coverImageContentType': next['coverImageContentType'],
           'coverImageFileName': next['coverImageFileName'],

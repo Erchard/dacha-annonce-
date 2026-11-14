@@ -24,12 +24,24 @@ class BookingDraft {
     String responsibleName = '',
     String contactPhone = '',
     String notes = '',
-    List<String> directions = const [],
+    List<String> legacyDirections = const [],
+    required String participationCondition,
+    String announcementStatus = 'planned',
+    required String eventDirection,
+    required String eventFormat,
+    List<String> targetAudiences = const [allWelcomeAudience],
     this.coverImage,
     required this.interval,
   }) : contactPhone = checkedContactPhone(contactPhone),
        notes = checkedText(notes.trim(), 'notes', 0, 500),
-       directions = checkedDirections(directions),
+       legacyDirections = checkedDirections(legacyDirections),
+       participationCondition = checkedParticipationCondition(
+         participationCondition,
+       ),
+       announcementStatus = checkedAnnouncementStatus(announcementStatus),
+       eventDirection = checkedEventDirection(eventDirection),
+       eventFormat = checkedEventFormat(eventFormat),
+       targetAudiences = checkedTargetAudiences(targetAudiences),
        title = checkedText(title.trim(), 'title', 3, 120),
        description = checkedText(description.trim(), 'description', 0, 5000),
        responsibleName = checkedText(
@@ -43,9 +55,20 @@ class BookingDraft {
     }
   }
   final String roomId, title, description, responsibleName, contactPhone, notes;
-  final List<String> directions;
+  final List<String> legacyDirections;
+  final String participationCondition,
+      announcementStatus,
+      eventDirection,
+      eventFormat;
+  final List<String> targetAudiences;
   final CoverImage? coverImage;
   final BookingInterval interval;
+
+  /// Display chips: structured direction first, else legacy tags.
+  List<String> get displayTags {
+    if (eventDirection.isNotEmpty) return [eventDirection];
+    return legacyDirections;
+  }
 }
 
 class Booking {
@@ -74,8 +97,9 @@ bool bookingPreventsRoomDeletion(
   DateTime start,
   DateTime now,
 ) {
-  if (status != BookingStatus.pending && status != BookingStatus.approved)
+  if (status != BookingStatus.pending && status != BookingStatus.approved) {
     return false;
+  }
   final zone = TimeZoneService();
   final today = zone.toKyiv(now), day = zone.toKyiv(start);
   return !DateTime(

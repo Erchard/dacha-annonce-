@@ -177,3 +177,40 @@ Production `dacha-annonce`: Hosting «MI Nov-7 help photo, support sections, mon
 - `/support`: секції Нові → Виконано → Інші (`listByStatuses` whereIn).
 - Календар місяць: `MiMonthCalendar` (синя шапка, HEX MI, логотип-дах).
 - Закрито (`done`): qrwdahM…, RBquX7…, wUpR4G….
+
+## MI tickets 07–08.11 — calendar typography / favicon / general type — 2026-11-09
+
+Production `dacha-annonce`: Hosting + Firestore Rules «MI Nov-9 calendar typography, week/list colors, roof favicon, type general». main.dart.js SHA256: `BDD7D545CB88A2E63E371DC71E5C995896924C3A4A08F28B03F0D8A2FE9AFDAC`. Smoke HEAD 200: `/`, `/schedule`, `/manifest.json`, `/favicon.png`, `/icons/Icon-192.png`.
+
+- Актуальні дати місяця: `w900` / більший fontSize; події чорний жирний / минулі сірі.
+- Тиждень і Список: `calendarWeekdayFill` / Header.
+- Favicon 96×96 і PWA icons з `dacha_roof.jpg`.
+- Тип `general` («Загальні питання») у rules + UI.
+- Закрито (`done`): Gjl2xQ…, AEZitv9…, ho63Boj…, VwuV1Yb…, R6gdvq….
+
+## MI tickets 10–11.11 — logo / calendar nav / help / type edit / analytics — 2026-11-11
+
+Production `dacha-annonce`: Hosting + Firestore Rules «MI Nov-11 roof logo, calendar→schedule, help rewrite, edit type, analytics». main.dart.js SHA256: `4D43E7BFAE4E9491971D0030CC379E84D3A92D8AD1A2F84B96D698D059426C1E`. Smoke HEAD 200: `/`, `/schedule`, `/help`, `/admin/analytics`, `/favicon.png`, `/icons/Icon-192.png`.
+
+- `logo_mark` і PWA з даху; Календар без «Список», кнопка «Розклад».
+- `/help` покроково; edit type на `new`; `/admin/analytics` (publicEvents + bookings join).
+- Закрито (`done`): 1tDwgo…, fciPnr…, g1V8Kz…, Q3UzXl…, DfniMK…, kQFldT….
+
+## MI tickets 11–13.11 — hard-delete new + structured event fields — 2026-11-13
+
+Production `dacha-annonce`: Hosting + Firestore Rules + indexes (`eventDirection` + `startAt`) «MI Nov-13 purge new tickets, structured event fields». main.dart.js SHA256: `A200F2E81E44DC00094387EC7A167C1339DF70B4D443C00FDBC59DEB0CEA80D0`. Smoke HEAD 200: `/`, `/schedule`, `/help`, `/support`, `/bookings/new`.
+
+- Admin hard-delete `supportTickets` лише для `status == new` (cascade comments/history/attachments); без soft-close в «Інші».
+- Форма події: `participationCondition`, `announcementStatus`, `eventDirection`, `eventFormat`, `targetAudiences`; write без `directions`; read-compat для старих.
+- `announcementStatus` — лейбл в афіші; не cancel booking.
+- Rules-тести: 37 PASS (purge + booking catalogs).
+- Закрито (`done`): CYDYKSm…, o7YA5T6….
+
+## MI tickets 14.11 — event fields display + create form UX + session note — 2026-11-14
+
+Production `dacha-annonce`: Hosting «MI Nov-14 event meta, form labels/borders, publicity copy». main.dart.js SHA256: `235E6E7E3901DA58C5252000C7FB6E70B47AA99DD038F1A220E92593C34D6BED`. Smoke HEAD 200: `/`, `/schedule`, `/bookings/new`, `/help`.
+
+- `/events/:id` і прев’ю: умова участі, статус (≠ planned), формат, аудиторія поруч із напрямом.
+- Форма «Створити подію»: новий текст публічності; лейбли над полями; scoped 2px блакитні рамки (hover/focus).
+- ndDEEj: без коду — Persistence.LOCAL + logout уже з a9RiN41.
+- Закрито (`done`): nS97OX…, U5H5C4…, VZHhCM…, ghIIHp…, ndDEEj….

@@ -218,3 +218,33 @@ MI повідомляє, що листи зміни пароля не прихо
 1. **qrwdahMifXuU57bqy2Th** — розділ «Фото» в `/help`.
 2. **RBquX7ChnXnAy5PK05o4** — секції Нові / Виконано / Інші на `/support` (без фіктивного statusSort).
 3. **wUpR4GklvbEY2pZiUtMp** — редизайн місячної сітки (шапка, HEX, логотип-дах).
+
+## Звернення 07–08.11.2026
+
+1. **Gjl2xQREZUXYRTbm7wW8** — жирніші/більші цифри актуальних дат у `MiMonthCalendar`.
+2. **AEZitv9sanUQLpwukRml** — текст подій: чорний жирний (актуальні) / сірий (минулі) у календарі й розкладі.
+3. **ho63BojkE1XJmPaV7FFD** — палітра місяця (`calendarWeekdayFill`) на Тиждень і Список.
+4. **VwuV1Yb8qBwQZOBeY0Op** — favicon/PWA з майстра «Дача — дах», більший вигляд у вкладці.
+5. **R6gdvqMwplw1he3Ll18w** — тип звернення `general` («Загальні питання») окремо від `feedback`.
+
+## Звернення 10–11.11.2026
+
+1. **1tDwgoTgT7jpesfkTHxC** — логотип-дах у chrome сайту (`logo_mark` з того ж майстра).
+2. **fciPnrh498NuJRslDcJy** — інструкція оновлюється разом із UX у поставці.
+3. **g1V8KzRmedBVBWwt7QdG** — `/help` простою мовою, покроково, з листом реєстрації й спамом.
+4. **Q3UzXlXnnt8nfwDADfMl** — редагування типу в діалозі «Редагувати» для `new`.
+5. **DfniMKVTvIctJkt26Y2j** — у Календарі прибрано «Список»; кнопка «Розклад» → місяць у `/schedule`.
+6. **kQFldTohHPO2HESNYLdZ** — admin `/admin/analytics`: період, напрямки, текст + статистика.
+
+## Звернення 11–13.11.2026
+
+1. **CYDYKSmjC9kwEAcdiLYZ** — admin «Видалити» для `new`: hard cascade (тікет + comments/history/attachments), без soft-close в «Інші».
+2. **o7YA5T6bVehXjuWMGKZB** — п’ять структурованих полів події замість multi-`directions`; `announcementStatus` лише для афіші, не `BookingAction.cancel`.
+
+## Звернення 14.11.2026
+
+1. **nS97OXkgca51dphwzcCA** — на сторінці/прев’ю події: умова, статус, формат, аудиторія поруч із напрямом.
+2. **U5H5C4DdSL9VeVNajyro** — рамки форми створення: 2px блакитні, hover/focus.
+3. **VZHhCM3j8c6Z82BC7DBt** — лейбли над полями 18px, відступи 8/20 px.
+4. **ghIIHpj8JeZVSwDcrQYY** — новий текст про публічність усіх даних форми.
+5. **ndDEEjHR8SU8Kg77BcVk** — сесія LOCAL між вкладками/після закриття; «Вийти» скидає (вже було).

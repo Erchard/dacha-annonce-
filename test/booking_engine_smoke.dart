@@ -58,7 +58,11 @@ Future<void> main() async {
       description: 'Подія створена справжнім Flutter-клієнтом.',
       contactPhone: '+380 00 000 00 00',
       notes: 'Перевірка примітки',
-      directions: ['Культура', 'Для дітей'],
+      participationCondition: 'Вхід вільний',
+      announcementStatus: 'planned',
+      eventDirection: 'Культура та спадщина',
+      eventFormat: 'Зустріч / спілкування',
+      targetAudiences: const ['Діти', 'Молодь'],
       interval: BookingInterval(at, at.add(const Duration(hours: 6))),
     );
     final id = engine.newId();
@@ -85,7 +89,8 @@ Future<void> main() async {
     check(
       published.contactPhone == '+380 00 000 00 00' &&
           published.notes == 'Перевірка примітки' &&
-          published.directions.length == 2,
+          published.eventDirection == 'Культура та спадщина' &&
+          published.targetAudiences.length == 2,
       'schedule fields round trip',
     );
     final conflict = engine.newId();

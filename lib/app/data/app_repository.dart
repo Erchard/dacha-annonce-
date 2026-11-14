@@ -129,7 +129,8 @@ class AppRepository
     Query<Map<String, dynamic>> query = db.collection('publicEvents');
     if (roomId != null) query = query.where('roomId', isEqualTo: roomId);
     if (directions.isNotEmpty) {
-      query = query.where('directions', arrayContainsAny: directions);
+      // Structured field: eventDirection (single). whereIn supports ≤10 values.
+      query = query.where('eventDirection', whereIn: directions);
     }
     final result = await _cursor(
       query

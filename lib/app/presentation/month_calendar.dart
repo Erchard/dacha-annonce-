@@ -46,6 +46,17 @@ bool _isToday(DateTime day) {
   return day.year == now.year && day.month == now.month && day.day == now.day;
 }
 
+/// Shared event title style: black bold for current/future, grey for past.
+TextStyle calendarEventTitleStyle({
+  required bool past,
+  double fontSize = 12,
+}) => TextStyle(
+  fontSize: fontSize,
+  height: 1.2,
+  fontWeight: FontWeight.w700,
+  color: past ? Colors.black45 : Colors.black87,
+);
+
 /// Month calendar matching MI mockup: blue toolbar + pastel weekday columns.
 class MiMonthCalendar extends StatelessWidget {
   const MiMonthCalendar({
@@ -365,8 +376,12 @@ class _MonthCell extends StatelessWidget {
                   child: Text(
                     '${date.day}',
                     style: TextStyle(
-                      fontSize: inMonth ? 22 : 16,
-                      fontWeight: FontWeight.w700,
+                      fontSize: inMonth
+                          ? (past ? 22 : 26)
+                          : 16,
+                      fontWeight: inMonth && !past
+                          ? FontWeight.w900
+                          : FontWeight.w700,
                       height: 1,
                       color: today
                           ? Colors.white
@@ -393,13 +408,9 @@ class _MonthCell extends StatelessWidget {
                             '${localTime(event.interval.start)} ${event.title}',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            style: calendarEventTitleStyle(
+                              past: past,
                               fontSize: 11,
-                              height: 1.2,
-                              color: past
-                                  ? Colors.black45
-                                  : const Color(0xFF0B57A8),
-                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),

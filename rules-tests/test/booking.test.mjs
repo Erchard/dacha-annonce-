@@ -205,17 +205,17 @@ test('admin deletes a past approved event and releases historical occupancy', as
 
 test('schedule details publish, filter and edit; forged projections and invalid fields denied', async () => {
  const cover={coverImageBytes:Bytes.fromUint8Array(Uint8Array.from([1,2,3,4])),coverImageContentType:'image/jpeg',coverImageFileName:'poster.jpg'};
- const details={contactPhone:'+380 00 000 00 00',notes:'Взяти блокнот',directions:['Культура','Для дітей'],...cover};
+ const details={contactPhone:'+380 00 000 00 00',notes:'Взяти блокнот',eventDirection:'Культура та спадщина',targetAudiences:['Діти','Молодь'],...cover};
  await assertSucceeds(approved('details',draft(details)));
  const pub=env.unauthenticatedContext().firestore();
  assert.equal((await getDoc(doc(pub,'publicEvents/details'))).data().notes,details.notes);
  assert.equal((await getDoc(doc(pub,'publicEvents/details'))).data().coverImageFileName,'poster.jpg');
- const found=await assertSucceeds(getDocs(query(collection(pub,'publicEvents'),where('directions','array-contains-any',['Культура']),limit(100))));
+ const found=await assertSucceeds(getDocs(query(collection(pub,'publicEvents'),where('eventDirection','==','Культура та спадщина'),limit(100))));
  assert.equal(found.size,1);
  await assertFails(execute(admin,'admin','details','edit',{expectedVersion:1,draft:draft(details),tamper:plan=>{plan.find(p=>p.path==='publicEvents/details').data.contactPhone='12345';}}));
  await assertSucceeds(execute(admin,'admin','details','edit',{expectedVersion:1,draft:draft({...details,notes:'Оновлено'})}));
  assert.equal((await getDoc(doc(pub,'publicEvents/details'))).data().notes,'Оновлено');
- for(const patch of [{coverImageContentType:'text/html'},{coverImageFileName:''},{coverImageBytes:Bytes.fromUint8Array(new Uint8Array(700001))},{coverImageBytes:null},{directions:['Невідомий']},{directions:['Клуб','Клуб']},{directions:'Клуб'},{notes:'x'.repeat(501)},{contactPhone:'not a phone'},{contactPhone:null},{coverImageContentType:'image/gif'},{coverImageBytes:null},{coverImageFileName:''}]) {
+ for(const patch of [{coverImageContentType:'text/html'},{coverImageFileName:''},{coverImageBytes:Bytes.fromUint8Array(new Uint8Array(700001))},{coverImageBytes:null},{eventDirection:'Невідомий'},{targetAudiences:['Усі охочі','Діти']},{targetAudiences:[]},{eventFormat:'Невідомий'},{announcementStatus:'unknown'},{notes:'x'.repeat(501)},{contactPhone:'not a phone'},{contactPhone:null},{coverImageContentType:'image/gif'},{coverImageBytes:null},{coverImageFileName:''}]) {
   await assertFails(execute(admin,'admin','details','edit',{expectedVersion:2,draft:draft({...details,...patch})}));
  }
  await assertFails(execute(owner,'owner','details','edit',{expectedVersion:2,draft:draft(details)}));

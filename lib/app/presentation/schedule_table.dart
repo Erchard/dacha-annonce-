@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../core/time/time_zone_service.dart';
 import '../../core/widgets/app_link.dart';
 import '../../core/widgets/direction_chip.dart';
+import '../../features/bookings/domain/event_details.dart';
 import '../../features/calendar/domain/public_event.dart';
 import 'shared.dart';
 
@@ -211,27 +212,68 @@ class ScheduleTable extends StatelessWidget {
     return '$count подій';
   }
 
-  Widget eventTitle(BuildContext context, PublicEvent event) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      AppLink(
-        to: '/events/${Uri.encodeComponent(event.id)}',
-        style: TextButton.styleFrom(
-          padding: EdgeInsets.zero,
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          alignment: Alignment.centerLeft,
+  bool dayIsPast(DateTime day) {
+    final now = TimeZoneService().toKyiv(DateTime.now());
+    return DateTime(
+      day.year,
+      day.month,
+      day.day,
+    ).isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  Widget eventTitle(
+    BuildContext context,
+    PublicEvent event, {
+    required DateTime day,
+  }) {
+    final past = dayIsPast(day);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppLink(
+          to: '/events/${Uri.encodeComponent(event.id)}',
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            alignment: Alignment.centerLeft,
+          ),
+          child: Text(
+            event.title,
+            style: scheduleSerif(
+              size: 18,
+              weight: FontWeight.w700,
+              color: past ? scheduleMuted : scheduleInk,
+            ),
+          ),
         ),
-        child: Text(
-          event.title,
-          style: scheduleSerif(size: 18, color: scheduleGreen),
-        ),
-      ),
-      if (event.directions.isNotEmpty) ...[
-        const SizedBox(height: 6),
-        DirectionChipWrap(directions: event.directions.take(3)),
+        if (event.announcementStatus != 'planned') ...[
+          const SizedBox(height: 4),
+          Text(
+            announcementStatusLabel(event.announcementStatus),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: event.announcementStatus == 'cancelled'
+                  ? scheduleMuted
+                  : scheduleInk,
+              decoration: event.announcementStatus == 'cancelled'
+                  ? TextDecoration.lineThrough
+                  : null,
+            ),
+          ),
+        ],
+        if (event.directions.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          DirectionChipWrap(directions: event.directions.take(3)),
+        ],
       ],
-    ],
+    );
+  }
+
+  TextStyle timeStyle(DateTime day) => TextStyle(
+    fontWeight: FontWeight.w700,
+    color: dayIsPast(day) ? scheduleMuted : scheduleInk,
   );
 
   int columnFlex(String heading) {
@@ -393,16 +435,18 @@ class ScheduleTable extends StatelessWidget {
                               child: padded(
                                 Text(
                                   timeLabel(entry.value[i]),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  style: timeStyle(entry.key),
                                 ),
                               ),
                             ),
                             Expanded(
                               flex: columnFlex('Назва'),
                               child: padded(
-                                eventTitle(context, entry.value[i]),
+                                eventTitle(
+                                  context,
+                                  entry.value[i],
+                                  day: entry.key,
+                                ),
                               ),
                             ),
                             Expanded(
@@ -496,9 +540,7 @@ class ScheduleTable extends StatelessWidget {
                                             child: padded(
                                               Text(
                                                 timeLabel(entry.value[i]),
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                ),
+                                                style: timeStyle(entry.key),
                                               ),
                                             ),
                                           ),
@@ -508,6 +550,7 @@ class ScheduleTable extends StatelessWidget {
                                               eventTitle(
                                                 context,
                                                 entry.value[i],
+                                                day: entry.key,
                                               ),
                                             ),
                                           ),
@@ -597,10 +640,10 @@ class ScheduleTable extends StatelessWidget {
                 children: [
                   Text(
                     timeLabel(event),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: timeStyle(entry.key),
                   ),
                   const SizedBox(height: 6),
-                  eventTitle(context, event),
+                  eventTitle(context, event, day: entry.key),
                   const SizedBox(height: 6),
                   Text(event.roomNameSnapshot),
                   const SizedBox(height: 8),

@@ -26,6 +26,13 @@ export async function seed(env) {
   ]);
  });
 }
-export const draft = (overrides={})=>({roomId:'room-a',title:'Зустріч громади',description:'Публічний опис',startAt:ts(start+1800000),endAt:ts(start+23400000),...overrides});
+export const draft = (overrides={})=>({
+ roomId:'room-a',title:'Зустріч громади',description:'Публічний опис',
+ startAt:ts(start+1800000),endAt:ts(start+23400000),
+ participationCondition:'Вхід вільний',announcementStatus:'planned',
+ eventDirection:'Громадська активність',eventFormat:'Зустріч / спілкування',
+ targetAudiences:['Усі охочі'],
+ ...overrides
+});
 export const dbFor = (env,uid,verified=true)=>env.authenticatedContext(uid,{email_verified:verified}).firestore();
 

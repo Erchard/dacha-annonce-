@@ -16,7 +16,7 @@ const ticketStatuses = [
   'closed',
 ];
 const ticketPriorities = ['low', 'normal', 'high'];
-const ticketTypes = ['bug', 'feature', 'feedback'];
+const ticketTypes = ['bug', 'feature', 'feedback', 'general'];
 const attachmentContentTypes = {'image/jpeg', 'image/png', 'image/webp'};
 const maxAttachmentBytes = 700000;
 const maxAttachmentsPerTicket = 5;
@@ -33,7 +33,7 @@ List<String> allowedTicketStatuses(String role, String status) =>
       }
     : role == 'admin'
     ? switch (status) {
-        'new' => ['closed'],
+        // Mistaken "new" tickets are hard-purged, not soft-closed.
         'done' => ['closed', 'new'],
         'rejected' => ['closed', 'new'],
         'closed' => ['new'],
@@ -255,13 +255,67 @@ class SupportRepository {
     Ticket t, {
     required String title,
     required String body,
-  }) => _write(
-    t.id,
-    t.version,
-    'edited',
-    title: checkedText(title.trim(), 'title', 3, 160),
-    body: checkedText(body.trim(), 'body', 10, 10000),
-  );
+    required String type,
+  }) {
+    if (!ticketTypes.contains(type)) {
+      throw const DomainException(ErrorCode.validation, field: 'type');
+    }
+    return _write(
+      t.id,
+      t.version,
+      'edited',
+      type: type,
+      title: checkedText(title.trim(), 'title', 3, 160),
+      body: checkedText(body.trim(), 'body', 10, 10000),
+    );
+  }
+
+  Future<void> purgeNewTicket(Ticket t) => firestoreCall(() async {
+    final uid = auth.currentUser?.uid;
+    if (uid == null) throw const DomainException(ErrorCode.unauthenticated);
+    final ticket = db.collection('supportTickets').doc(t.id);
+    final profile = (await db.collection('users').doc(uid).get()).data();
+    if (profile == null ||
+        profile['isDisabled'] == true ||
+        profile['role'] != 'admin') {
+      throw const DomainException(ErrorCode.permissionDenied);
+    }
+    final snap = await ticket.get();
+    final data = snap.data();
+    if (!snap.exists || data == null) {
+      throw const DomainException(ErrorCode.notFound);
+    }
+    if (data['status'] != 'new') {
+      throw const DomainException(ErrorCode.permissionDenied);
+    }
+    if ((data['version'] as int? ?? 0) != t.version) {
+      throw const DomainException(ErrorCode.staleVersion);
+    }
+    Future<void> deleteAll(String collection) async {
+      QueryDocumentSnapshot<Map<String, dynamic>>? cursor;
+      while (true) {
+        Query<Map<String, dynamic>> q = ticket
+            .collection(collection)
+            .orderBy(FieldPath.documentId)
+            .limit(100);
+        if (cursor != null) q = q.startAfterDocument(cursor);
+        final page = await q.get();
+        if (page.docs.isEmpty) break;
+        final batch = db.batch();
+        for (final doc in page.docs) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+        if (page.docs.length < 100) break;
+        cursor = page.docs.last;
+      }
+    }
+
+    await deleteAll('attachments');
+    await deleteAll('comments');
+    await deleteAll('history');
+    await ticket.delete();
+  });
 
   Future<void> addAttachment(
     String ticketId, {
@@ -369,7 +423,11 @@ class SupportRepository {
               old['status'] != 'new' ||
               title == null ||
               body == null ||
-              (title == old['title'] && body == old['body']))) {
+              type == null ||
+              !ticketTypes.contains(type) ||
+              (title == old['title'] &&
+                  body == old['body'] &&
+                  type == old['type']))) {
         throw const DomainException(ErrorCode.permissionDenied);
       }
       final now = FieldValue.serverTimestamp();
@@ -386,7 +444,11 @@ class SupportRepository {
           'schemaVersion': 1,
           'lastCommentId': null,
         },
-        if (action == 'edited') ...{'title': title, 'body': body},
+        if (action == 'edited') ...{
+          'type': type,
+          'title': title,
+          'body': body,
+        },
         'status': ?status,
         'priority': ?priority,
         'updatedBy': uid,

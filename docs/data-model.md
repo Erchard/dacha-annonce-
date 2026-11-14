@@ -7,7 +7,8 @@
 - bookings: приватні заявки; owner або admin. `responsibleName` — публічне ім’я відповідального. version і очікувана версія запобігають перезапису чужого рішення. history/{version} обов’язкова й незмінна. Щотижневий повтор — кілька звичайних заявок, без окремої колекції серій.
 - publicEvents: лише точна публічна проєкція approved booking, включно з `responsibleName`; UID, контакти, причини відхилення/скасування не копіюються.
 - rooms/{roomId}/occupancy/{blockId}: UTC блок 6 годин, 12 півгодинних слотів. ID — Unix seconds початку блока. lastMutationBookingId, lastMutationVersion, updatedAt/By підтверджують ту саму транзакцію. Повна перевірка вільності/власності й незмінності сторонніх слотів — у Rules; [обґрунтування](decisions/003-occupancy-version-witness.md).
-- supportTickets: версіоновані звернення. Staff (admin/developer) бачить усі; автор (createdBy) може get/list власні тікети й читати comments/history/attachments. Create feedback: organizer|admin. comments/history/attachments append-only; писати коментарі/статуси — лише staff. JPEG/PNG/WebP ≤700 КБ, до 5 на звернення. Підтримка не надає developer прав бронювання/керування користувачами.
+- supportTickets: версіоновані звернення (`type`: bug|feature|feedback|general). Staff (admin/developer) бачить усі; автор (createdBy) може get/list власні тікети й читати comments/history/attachments. Create: organizer лише `feedback` (`/feedback`); admin — будь-який валідний тип, зокрема `general` («Загальні питання»). Admin може змінити `type`/`title`/`body` лише поки статус `new` (`edited`). comments/history/attachments append-only; писати коментарі/статуси — лише staff. JPEG/PNG/WebP ≤700 КБ, до 5 на звернення. Підтримка не надає developer прав бронювання/керування користувачами.
+- Admin analytics (`/admin/analytics`): read-only агрегація опублікованих `publicEvents` за період і напрямками; розріз за організатором через `bookings/{id}.organizerId` (UID не додається в публічну проєкцію).
 
 BookingService спершу читає всі потрібні documents, потім записує booking/history, до чотирьох occupancy блоків і publicEvents. Pending не створює locks. Cancellation видаляє публічну проєкцію і звільняє тільки власні slots. Якщо транзакція відхилена, часткових змін немає.
 
@@ -30,3 +31,11 @@ Firebase Console та Admin SDK обходять Rules: власник має о
 ## Поля розкладу — 22.10.2026
 
 У booking та publicEvents додано необов’язкові contactPhone (публічний телефон відповідального, до 32 символів), notes (примітки до 500 символів), directions (унікальні значення з 15 напрямків MI). Старі записи без цих полів читаються з порожніми значеннями; явно некоректні значення відхиляються. Телефон вводиться окремо з попередженням про публічність, з профілю користувача не береться. Це виняток до згаданого вище виключення контактів із публічної проєкції. Проєкція зобов’язана точно відповідати заявці. Кілька обраних напрямків фільтрують події за збігом хоча б одного; інтервал дат і локація застосовуються одночасно.
+
+## Структуровані поля події — 13.11.2026
+
+Нові create/edit пишуть `participationCondition`, `announcementStatus` (`planned`|`postponed`|`cancelled`), `eventDirection`, `eventFormat`, `targetAudiences` (multi; «Усі охочі» лише окремо). Поле `directions` більше не входить у write-контракт нових документів; старі public/booking з `directions` лишаються валідними для читання. `announcementStatus` — лише підпис в афіші; не мапиться на cancel/delete booking. Фільтр розкладу/аналітики — equality/`whereIn` по `eventDirection`.
+
+## Hard-delete supportTickets — 13.11.2026
+
+Admin може фізично видалити `supportTickets/{id}` і підколекції comments/history/attachments лише коли `status == 'new'`. Інші статуси — `delete: if false`. Soft `new→closed` як «Видалити» прибрано.

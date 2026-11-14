@@ -23,7 +23,11 @@ PublicEvent sample(String id, int hour, {String phone = '+380 00 000 00 00'}) =>
       responsibleName: 'Відповідальна особа',
       contactPhone: phone,
       notes: 'Взяти смаколики до чаю та блокнот для нотаток',
-      directions: ['Культура', 'Для дітей'],
+      participationCondition: 'Вхід вільний',
+      announcementStatus: 'planned',
+      eventDirection: 'Культура та спадщина',
+      eventFormat: 'Зустріч / спілкування',
+      targetAudiences: const ['Діти', 'Молодь'],
       interval: BookingInterval(
         DateTime.utc(2026, 10, 20, hour),
         DateTime.utc(2026, 10, 20, hour + 1),
@@ -57,23 +61,25 @@ void main() {
     final legacy = {...data}
       ..remove('contactPhone')
       ..remove('notes')
-      ..remove('directions')
+      ..remove('participationCondition')
+      ..remove('announcementStatus')
+      ..remove('eventDirection')
+      ..remove('eventFormat')
+      ..remove('targetAudiences')
       ..remove('coverImageBytes')
       ..remove('coverImageContentType')
       ..remove('coverImageFileName');
     expect(PublicEventDto.decode('old', legacy).contactPhone, '');
-    expect(PublicEventDto.decode('old', legacy).directions, isEmpty);
+    expect(PublicEventDto.decode('old', legacy).hasStructuredFields, isFalse);
     expect(PublicEventDto.decode('old', legacy).coverImage, isNull);
     expect(PublicEventDto.encode(PublicEventDto.decode('new', data)), data);
     for (final patch in [
-      <String, dynamic>{
-        'directions': ['Клуб', 'Клуб'],
+      <String, dynamic>{'eventDirection': 'Невідомий'},
+      {
+        'targetAudiences': ['Усі охочі', 'Діти'],
       },
       {
-        'directions': ['Невідомий'],
-      },
-      {
-        'directions': [12],
+        'targetAudiences': [12],
       },
       {'contactPhone': null},
       {'notes': 12},

@@ -19,6 +19,11 @@ class PublicEventDto {
     'contactPhone',
     'notes',
     'directions',
+    'participationCondition',
+    'announcementStatus',
+    'eventDirection',
+    'eventFormat',
+    'targetAudiences',
     'coverImageBytes',
     'coverImageContentType',
     'coverImageFileName',
@@ -30,19 +35,28 @@ class PublicEventDto {
     'updatedAt',
     'schemaVersion',
   };
+  static Map<String, dynamic> _merged(Map<String, dynamic> data) => {
+    for (final key in keys) key: null,
+    'contactPhone': '',
+    'notes': '',
+    'directions': <String>[],
+    'participationCondition': participationConditionOptions.first,
+    'announcementStatus': 'planned',
+    'eventDirection': eventDirectionOptions.first,
+    'eventFormat': eventFormatOptions.first,
+    'targetAudiences': <String>[allWelcomeAudience],
+    'responsibleName': '',
+    for (final entry in data.entries)
+      if (keys.contains(entry.key)) entry.key: entry.value,
+  };
+
   static PublicEvent decode(String id, Map<String, dynamic> data) {
-    final f = Fields({
-      'contactPhone': '',
-      'notes': '',
-      'directions': <String>[],
-      'coverImageBytes': null,
-      'coverImageContentType': null,
-      'coverImageFileName': null,
-      ...data,
-    }, keys);
+    final hasStructured = data.containsKey('eventDirection');
+    final f = Fields(_merged(data), keys);
     if (f.value<String>('timeZone') != 'Europe/Kyiv') {
       throw const DomainException(ErrorCode.validation, field: 'timeZone');
     }
+    final legacy = checkedDirections(f.value<List<dynamic>>('directions'));
     return PublicEvent(
       id: id,
       title: f.value('title'),
@@ -53,7 +67,15 @@ class PublicEventDto {
       responsibleName: f.value('responsibleName'),
       contactPhone: f.value('contactPhone'),
       notes: f.value('notes'),
-      directions: checkedDirections(f.value<List<dynamic>>('directions')),
+      legacyDirections: hasStructured ? const [] : legacy,
+      participationCondition: f.value('participationCondition'),
+      announcementStatus: f.value('announcementStatus'),
+      eventDirection: f.value('eventDirection'),
+      eventFormat: f.value('eventFormat'),
+      targetAudiences: List<String>.from(
+        f.value<List<dynamic>>('targetAudiences'),
+      ),
+      hasStructuredFields: hasStructured,
       coverImage: BookingDto.coverFrom(f.data),
       interval: BookingInterval(f.time('startAt'), f.time('endAt')),
       bookingVersion: f.value('bookingVersion'),
@@ -71,7 +93,11 @@ class PublicEventDto {
     'responsibleName': event.responsibleName,
     'contactPhone': event.contactPhone,
     'notes': event.notes,
-    'directions': event.directions,
+    'participationCondition': event.participationCondition,
+    'announcementStatus': event.announcementStatus,
+    'eventDirection': event.eventDirection,
+    'eventFormat': event.eventFormat,
+    'targetAudiences': event.targetAudiences,
     ...BookingDto.coverFields(event.coverImage),
     'startAt': Timestamp.fromDate(event.interval.start),
     'endAt': Timestamp.fromDate(event.interval.end),

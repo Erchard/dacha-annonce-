@@ -32,7 +32,7 @@ void clearSupportDraft() => _memory = null;
       return null;
     }
     final type = map['type'] as String? ?? 'bug';
-    if (!['bug', 'feature', 'feedback'].contains(type)) return null;
+    if (!['bug', 'feature', 'feedback', 'general'].contains(type)) return null;
     return (
       type: type,
       title: map['title'] as String? ?? '',

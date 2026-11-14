@@ -9,6 +9,7 @@ import 'presentation/calendar_pages.dart';
 import 'presentation/auth_pages.dart';
 import 'presentation/booking_pages.dart';
 import 'presentation/admin_pages.dart';
+import 'presentation/analytics_pages.dart';
 import 'presentation/info_pages.dart';
 import 'presentation/support_pages.dart';
 
@@ -305,6 +306,13 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
       path: '/admin/users',
       builder: (context, state) =>
           const ProtectedPage(roles: [UserRole.admin], child: AdminUsersPage()),
+    ),
+    GoRoute(
+      path: '/admin/analytics',
+      builder: (context, state) => const ProtectedPage(
+        roles: [UserRole.admin],
+        child: AdminAnalyticsPage(),
+      ),
     ),
     GoRoute(
       path: '/feedback',

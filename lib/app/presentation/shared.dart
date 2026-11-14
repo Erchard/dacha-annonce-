@@ -151,6 +151,11 @@ class AppFrame extends ConsumerWidget {
           outlined: true,
           child: Text('Користувачі'),
         ),
+        const AppLink(
+          to: '/admin/analytics',
+          outlined: true,
+          child: Text('Аналітика'),
+        ),
         _navBadge(
           count: openTickets,
           child: const AppLink(
@@ -317,6 +322,10 @@ class AppFrame extends ConsumerWidget {
                 ListTile(
                   title: const Text('Користувачі'),
                   onTap: () => context.go('/admin/users'),
+                ),
+                ListTile(
+                  title: const Text('Аналітика'),
+                  onTap: () => context.go('/admin/analytics'),
                 ),
               ],
               if (profile != null &&

@@ -158,7 +158,7 @@ class HelpPage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              '2. Зауваження щодо сайту надішліть через «Зауваження та пропозиції» '
+              '2. Відгуки щодо сайту надішліть через «Відгуки та пропозиції» '
               '(потрібен вхід організатора або адміністратора).',
             ),
             const SizedBox(height: 8),
@@ -170,7 +170,7 @@ class HelpPage extends StatelessWidget {
             const AppLink(to: '/contacts', child: Text('Контакти')),
             const AppLink(
               to: '/feedback',
-              child: Text('Зауваження та пропозиції'),
+              child: Text('Відгуки та пропозиції'),
             ),
           ]),
           section('Ярлик на телефон (не Google Play)', [
@@ -233,16 +233,16 @@ class ContactsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           const Text(
-            'Зауваження щодо роботи сайту можна надіслати через форму зворотного зв’язку.',
+            'Відгуки щодо роботи сайту можна надіслати через форму зворотного зв’язку.',
           ),
           const SizedBox(height: 8),
           const AppLink(
             to: '/feedback',
-            child: Text('Зауваження та пропозиції'),
+            child: Text('Відгуки та пропозиції'),
           ),
           if (staff) ...[
             const SizedBox(height: 8),
-            const AppLink(to: '/support', child: Text('Звернення (службові)')),
+            const AppLink(to: '/support', child: Text('Службові звернення')),
           ],
           const SizedBox(height: 16),
           const AppLink(to: '/help', child: Text('Інструкція користувача')),

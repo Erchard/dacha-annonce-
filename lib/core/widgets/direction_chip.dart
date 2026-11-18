@@ -29,6 +29,7 @@ const _directionColors = <String, (Color, Color)>{
   'Благодійність': (Color(0xFFFFF7ED), Color(0xFF9A3412)),
   'Партнерство та співпраця': (Color(0xFFFAF5FF), Color(0xFF6B21A8)),
   'Дозвілля та спілкування': (Color(0xFFECFEFF), Color(0xFF155E75)),
+  'Внутрішні заходи Фонду': (Color(0xFFF5F3FF), Color(0xFF4C1D95)),
 };
 
 (Color, Color) directionColors(String direction) =>

@@ -93,6 +93,72 @@ String statusLabel(BookingStatus status) => switch (status) {
   BookingStatus.deleted => 'Видалено',
 };
 
+/// Sitewide form labels (nJAWl3x): 18px bold above fields.
+const siteFormLabelGreen = Color(0xFF1B4332);
+const siteFormLabelOchre = Color(0xFF8B5A00);
+
+Widget siteFormLabel(String text, {Color color = siteFormLabelGreen}) => Text(
+  text,
+  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
+);
+
+Widget siteFormBlock(
+  String label,
+  Widget field, {
+  Color labelColor = siteFormLabelGreen,
+}) => Padding(
+  padding: const EdgeInsets.only(bottom: 20),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      siteFormLabel(label, color: labelColor),
+      const SizedBox(height: 8),
+      field,
+    ],
+  ),
+);
+
+InputDecoration siteFormDecoration({
+  String? helperText,
+  String? hintText,
+  Widget? suffixIcon,
+  int? helperMaxLines,
+}) => InputDecoration(
+  floatingLabelBehavior: FloatingLabelBehavior.never,
+  helperText: helperText,
+  helperMaxLines: helperMaxLines,
+  hintText: hintText,
+  suffixIcon: suffixIcon,
+);
+
+/// Ochre borders for «Відгуки та пропозиції» (wjfGBc4).
+ThemeData ochreFormTheme(ThemeData base) {
+  const idle = Color(0xFFC48A2A);
+  const hover = Color(0xFFA66F18);
+  const focus = Color(0xFF8B5A00);
+  const radius = BorderRadius.all(Radius.circular(4));
+  OutlineInputBorder side(Color c) => OutlineInputBorder(
+    borderRadius: radius,
+    borderSide: BorderSide(color: c, width: 2),
+  );
+  return base.copyWith(
+    focusColor: const Color(0x408B5A00),
+    inputDecorationTheme: base.inputDecorationTheme.copyWith(
+      filled: true,
+      fillColor: Colors.white,
+      floatingLabelBehavior: FloatingLabelBehavior.never,
+      border: WidgetStateInputBorder.resolveWith((states) {
+        if (states.contains(WidgetState.focused)) return side(focus);
+        if (states.contains(WidgetState.hovered)) return side(hover);
+        return side(idle);
+      }),
+      enabledBorder: side(idle),
+      focusedBorder: side(focus),
+      focusedErrorBorder: side(focus),
+    ),
+  );
+}
+
 class AppFrame extends ConsumerWidget {
   const AppFrame({
     super.key,
@@ -130,7 +196,7 @@ class AppFrame extends ConsumerWidget {
         AppLink(to: bookingPath, child: const Text('Створити подію')),
       const AppLink(
         to: '/feedback',
-        child: Text('Зауваження та пропозиції'),
+        child: Text('Відгуки та пропозиції'),
       ),
       const AppLink(to: '/contacts', child: Text('Контакти')),
       const AppLink(to: '/help', child: Text('Інструкція')),
@@ -161,7 +227,7 @@ class AppFrame extends ConsumerWidget {
           child: const AppLink(
             to: '/support',
             outlined: true,
-            child: Text('Звернення'),
+            child: Text('Службові звернення'),
           ),
         ),
       ] else if (profile != null &&
@@ -179,7 +245,7 @@ class AppFrame extends ConsumerWidget {
           child: const AppLink(
             to: '/support',
             outlined: true,
-            child: Text('Звернення'),
+            child: Text('Службові звернення'),
           ),
         ),
     ];
@@ -244,12 +310,12 @@ class AppFrame extends ConsumerWidget {
                   height: 36,
                   width: 36,
                   filterQuality: FilterQuality.high,
-                  semanticLabel: 'Дача',
+                  semanticLabel: 'Дача. Календар подій',
                 ),
                 const SizedBox(width: 10),
                 const Flexible(
                   child: Text(
-                    'Дача',
+                    'Дача. Календар подій',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w600,
@@ -286,7 +352,7 @@ class AppFrame extends ConsumerWidget {
                       height: 48,
                       width: 48,
                       filterQuality: FilterQuality.high,
-                      semanticLabel: 'Дача',
+                      semanticLabel: 'Дача. Календар подій',
                     ),
                     const SizedBox(height: 12),
                     const Text('Особисте меню', style: TextStyle(fontSize: 22)),
@@ -334,7 +400,7 @@ class AppFrame extends ConsumerWidget {
                 ListTile(
                   title: Row(
                     children: [
-                      const Expanded(child: Text('Звернення')),
+                      const Expanded(child: Text('Службові звернення')),
                       if (openTickets > 0)
                         Badge(
                           label: Text(
@@ -493,11 +559,11 @@ class AppFrame extends ConsumerWidget {
                                 height: 40,
                                 width: 40,
                                 filterQuality: FilterQuality.high,
-                                semanticLabel: 'Дача',
+                                semanticLabel: 'Дача. Календар подій',
                               ),
                               const SizedBox(width: 12),
                               const Text(
-                                'Дача',
+                                'Дача. Календар подій',
                                 style: TextStyle(fontSize: 13),
                               ),
                             ],

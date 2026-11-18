@@ -116,19 +116,35 @@ ThemeData dachaTheme() {
         side: BorderSide(color: border),
       ),
     ),
-    inputDecorationTheme: const InputDecorationThemeData(
+    focusColor: const Color(0x4036674D),
+    inputDecorationTheme: InputDecorationThemeData(
       filled: true,
       fillColor: Colors.white,
-      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-      border: OutlineInputBorder(
+      floatingLabelBehavior: FloatingLabelBehavior.never,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      border: WidgetStateInputBorder.resolveWith((states) {
+        const radius = BorderRadius.all(Radius.circular(4));
+        Color color = const Color(0xFF2F5A42); // dark green idle
+        if (states.contains(WidgetState.focused)) {
+          color = const Color(0xFF1B4332); // saturated focus
+        } else if (states.contains(WidgetState.hovered)) {
+          color = const Color(0xFF244C38); // darker hover
+        }
+        return OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: BorderSide(color: color, width: 2),
+        );
+      }),
+      enabledBorder: const OutlineInputBorder(
+        borderSide: BorderSide(color: Color(0xFF2F5A42), width: 2),
         borderRadius: BorderRadius.all(Radius.circular(4)),
       ),
-      enabledBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: border),
+      focusedBorder: const OutlineInputBorder(
+        borderSide: BorderSide(color: Color(0xFF1B4332), width: 2),
         borderRadius: BorderRadius.all(Radius.circular(4)),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: green, width: 2),
+      focusedErrorBorder: const OutlineInputBorder(
+        borderSide: BorderSide(color: Color(0xFF1B4332), width: 2),
         borderRadius: BorderRadius.all(Radius.circular(4)),
       ),
     ),
@@ -364,7 +380,7 @@ class DachaApp extends StatelessWidget {
   final GoRouter router;
   @override
   Widget build(BuildContext context) => MaterialApp.router(
-    title: 'Дача',
+    title: 'Дача. Календар подій',
     debugShowCheckedModeBanner: false,
     theme: dachaTheme(),
     locale: const Locale('uk'),
@@ -379,7 +395,7 @@ class StartupApp extends StatelessWidget {
   final String? error;
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Дача',
+    title: 'Дача. Календар подій',
     debugShowCheckedModeBanner: false,
     theme: dachaTheme(),
     locale: const Locale('uk'),

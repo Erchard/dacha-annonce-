@@ -16,27 +16,40 @@ class AnalyticsReport {
     required this.to,
     required this.total,
     required this.byDirection,
-    required this.byOrganizer,
+    required this.byParticipation,
+    required this.byAnnouncement,
+    required this.byFormat,
     required this.byRoom,
+    required this.notesLines,
   });
   final DateTime from;
   final DateTime to;
   final int total;
   final Map<String, int> byDirection;
-  final Map<String, int> byOrganizer;
+  final Map<String, int> byParticipation;
+  final Map<String, int> byAnnouncement;
+  final Map<String, int> byFormat;
   final Map<String, int> byRoom;
+  final List<String> notesLines;
 
   String summaryText() {
     final range =
         '${DateFormat('d MMMM yyyy', 'uk').format(from)} — '
         '${DateFormat('d MMMM yyyy', 'uk').format(to)}';
-    final topDirections = _topLines(byDirection, 5);
-    final topRooms = _topLines(byRoom, 5);
-    final topOrganizers = _topLines(byOrganizer, 5);
-    return 'За період $range опубліковано $total подій. '
-        'Найчастіші напрямки: $topDirections. '
-        'Найактивніші локації: $topRooms. '
-        'Найактивніші організатори: $topOrganizers.';
+    final postponed = byAnnouncement['postponed'] ?? 0;
+    final cancelled = byAnnouncement['cancelled'] ?? 0;
+    final buffer = StringBuffer(
+      'За період $range опубліковано $total подій. '
+      'Найчастіші напрямки: ${_topLines(byDirection, 5)}. '
+      'Найактивніші локації: ${_topLines(byRoom, 5)}. '
+      'Перенесено: $postponed, скасовано в афіші: $cancelled.',
+    );
+    if (notesLines.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln();
+      buffer.write('За матеріалами приміток: ${notesLines.join(' ')}');
+    }
+    return buffer.toString();
   }
 
   String _topLines(Map<String, int> counts, int limit) {
@@ -94,88 +107,41 @@ class _AdminAnalyticsPageState extends ConsumerState<AdminAnalyticsPage> {
   }
 
   Future<List<PublicEvent>> loadPublished(
-    DateTime rangeStart,
-    DateTime rangeEndExclusive,
+    DateTime start,
+    DateTime end,
     List<String> directions,
   ) async {
     final repo = ref.read(repositoryProvider);
     final byId = <String, PublicEvent>{};
+
     Future<void> exhaust(List<String> directionChunk) async {
-      var cursor = rangeStart.toUtc();
-      final limit = rangeEndExclusive.toUtc();
-      while (cursor.isBefore(limit)) {
-        final chunkEnd = cursor.add(const Duration(days: 60)).isAfter(limit)
-            ? limit
-            : cursor.add(const Duration(days: 60));
-        PageCursor? page;
-        do {
-          final result = await repo.listRange(
-            cursor,
-            chunkEnd,
-            PageRequest(limit: 100, after: page),
-            directions: directionChunk,
-          );
-          for (final event in result.items) {
-            byId[event.id] = event;
-          }
-          page = result.next;
-        } while (page != null);
-        cursor = chunkEnd;
-      }
+      PageCursor? cursor;
+      do {
+        final page = await repo.listRange(
+          start,
+          end,
+          PageRequest(limit: 100, after: cursor),
+          directions: directionChunk,
+        );
+        for (final event in page.items) {
+          byId[event.id] = event;
+        }
+        cursor = page.next;
+      } while (cursor != null);
     }
 
     if (directions.isEmpty) {
       await exhaust(const []);
     } else {
       for (var i = 0; i < directions.length; i += 10) {
-        final end = i + 10 > directions.length ? directions.length : i + 10;
-        await exhaust(directions.sublist(i, end));
+        final endIdx = i + 10 > directions.length
+            ? directions.length
+            : i + 10;
+        await exhaust(directions.sublist(i, endIdx));
       }
     }
-    final events = byId.values.toList()
+    return byId.values.toList()
       ..sort((a, b) => a.interval.start.compareTo(b.interval.start));
-    return events;
-  }
-
-  Future<Map<String, String>> loadOrganizerNames() async {
-    final repo = ref.read(repositoryProvider);
-    final names = <String, String>{};
-    PageCursor? page;
-    do {
-      final result = await repo.listProfiles(
-        PageRequest(limit: 100, after: page),
-        role: UserRole.organizer,
-      );
-      for (final profile in result.items) {
-        names[profile.id] = profile.displayName.trim();
-      }
-      page = result.next;
-    } while (page != null);
-    return names;
-  }
-
-  Future<Map<String, int>> countByOrganizer(List<PublicEvent> events) async {
-    final repo = ref.read(repositoryProvider);
-    final names = await loadOrganizerNames();
-    final counts = <String, int>{};
-    for (var i = 0; i < events.length; i += 10) {
-      final chunk = events.skip(i).take(10);
-      final bookings = await Future.wait(
-        chunk.map((event) => repo.getBooking(event.id)),
-      );
-      for (final booking in bookings) {
-        if (booking == null) {
-          counts['Невідомий організатор'] =
-              (counts['Невідомий організатор'] ?? 0) + 1;
-          continue;
-        }
-        final label =
-            names[booking.organizerId] ??
-            'Організатор ${booking.organizerId.substring(0, 6)}…';
-        counts[label] = (counts[label] ?? 0) + 1;
-      }
-    }
-    return counts;
   }
 
   Future<void> run() async {
@@ -199,7 +165,11 @@ class _AdminAnalyticsPageState extends ConsumerState<AdminAnalyticsPage> {
         selectedDirections.toList()..sort(),
       );
       final byDirection = <String, int>{};
+      final byParticipation = <String, int>{};
+      final byAnnouncement = <String, int>{};
+      final byFormat = <String, int>{};
       final byRoom = <String, int>{};
+      final notesLines = <String>[];
       for (final event in events) {
         final roomLabel = event.roomNameSnapshot.trim().isEmpty
             ? event.roomId
@@ -208,16 +178,23 @@ class _AdminAnalyticsPageState extends ConsumerState<AdminAnalyticsPage> {
         if (event.hasStructuredFields) {
           byDirection[event.eventDirection] =
               (byDirection[event.eventDirection] ?? 0) + 1;
+          byParticipation[event.participationCondition] =
+              (byParticipation[event.participationCondition] ?? 0) + 1;
+          byAnnouncement[event.announcementStatus] =
+              (byAnnouncement[event.announcementStatus] ?? 0) + 1;
+          byFormat[event.eventFormat] = (byFormat[event.eventFormat] ?? 0) + 1;
         } else if (event.legacyDirections.isEmpty) {
-          byDirection['Без напрямку'] =
-              (byDirection['Без напрямку'] ?? 0) + 1;
+          byDirection['Без напрямку'] = (byDirection['Без напрямку'] ?? 0) + 1;
         } else {
           for (final direction in event.legacyDirections) {
             byDirection[direction] = (byDirection[direction] ?? 0) + 1;
           }
         }
+        final note = event.notes.trim();
+        if (note.isNotEmpty) {
+          notesLines.add('«$note» (${event.title}).');
+        }
       }
-      final byOrganizer = await countByOrganizer(events);
       if (!mounted) return;
       setState(() {
         report = AnalyticsReport(
@@ -225,8 +202,11 @@ class _AdminAnalyticsPageState extends ConsumerState<AdminAnalyticsPage> {
           to: to,
           total: events.length,
           byDirection: byDirection,
-          byOrganizer: byOrganizer,
+          byParticipation: byParticipation,
+          byAnnouncement: byAnnouncement,
+          byFormat: byFormat,
           byRoom: byRoom,
+          notesLines: notesLines,
         );
         busy = false;
       });
@@ -263,6 +243,13 @@ class _AdminAnalyticsPageState extends ConsumerState<AdminAnalyticsPage> {
   @override
   Widget build(BuildContext context) {
     final dateLabel = DateFormat('d MMMM yyyy', 'uk');
+    final profile = ref.watch(profileProvider).asData?.value;
+    if (profile?.role != UserRole.admin) {
+      return const AppFrame(
+        title: 'Аналітика',
+        child: Text('Доступно лише адміністратору.'),
+      );
+    }
     return AppFrame(
       title: 'Аналітика',
       child: Column(
@@ -293,16 +280,19 @@ class _AdminAnalyticsPageState extends ConsumerState<AdminAnalyticsPage> {
             ],
           ),
           const SizedBox(height: 16),
-          Text('Тематика (напрямки)', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Напрям діяльності',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-          for (final direction in eventDirectionOptions)
-            FilterChip(
-              label: Text(direction),
-              selected: selectedDirections.contains(direction),
+              for (final direction in eventDirectionOptions)
+                FilterChip(
+                  label: Text(direction),
+                  selected: selectedDirections.contains(direction),
                   onSelected: busy
                       ? null
                       : (selected) {
@@ -328,26 +318,46 @@ class _AdminAnalyticsPageState extends ConsumerState<AdminAnalyticsPage> {
           ],
           if (report != null) ...[
             const SizedBox(height: 24),
-            Text('І. Загальний аналіз', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'І. Загальний аналіз',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 8),
             Text(report!.summaryText()),
             const SizedBox(height: 24),
-            Text('ІІ. Статистика', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'ІІ. Статистика',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 12),
             Text('1. Загальна кількість подій: ${report!.total}'),
             const SizedBox(height: 16),
-            countsBlock('2. Кількість подій за напрямками', report!.byDirection),
-            const SizedBox(height: 16),
             countsBlock(
-              '3. Кількість подій за організаторами',
-              report!.byOrganizer,
+              '2. Кількість подій за напрямками',
+              report!.byDirection,
             ),
             const SizedBox(height: 16),
-            countsBlock('4. Кількість подій за локаціями', report!.byRoom),
-            const SizedBox(height: 8),
-            const Text(
-              'Подія з кількома напрямками входить у кожен обраний напрямок окремо.',
-              style: TextStyle(fontSize: 13),
+            countsBlock(
+              '3. Кількість подій за умовами участі',
+              report!.byParticipation,
+            ),
+            const SizedBox(height: 16),
+            countsBlock(
+              '4. Кількість скасованих та перенесених подій',
+              {
+                'Перенесено': report!.byAnnouncement['postponed'] ?? 0,
+                'Скасовано': report!.byAnnouncement['cancelled'] ?? 0,
+              },
+            ),
+            const SizedBox(height: 16),
+            countsBlock(
+              '5. Кількість за форматом подій',
+              report!.byFormat,
+            ),
+            const SizedBox(height: 16),
+            countsBlock(
+              '6. Кількість подій по кожній з локацій',
+              report!.byRoom,
             ),
           ],
         ],

@@ -128,6 +128,28 @@ class AppRepository
     final key = 'events:$from:$to:$roomId:${directions.join('|')}';
     Query<Map<String, dynamic>> query = db.collection('publicEvents');
     if (roomId != null) query = query.where('roomId', isEqualTo: roomId);
+    if (directions.length > 10) {
+      // Firestore whereIn ≤10: merge chunk queries (no cross-chunk cursor).
+      final byId = <String, PublicEvent>{};
+      for (var i = 0; i < directions.length; i += 10) {
+        final endIdx = i + 10 > directions.length
+            ? directions.length
+            : i + 10;
+        final part = await listRange(
+          start,
+          end,
+          page,
+          roomId: roomId,
+          directions: directions.sublist(i, endIdx),
+        );
+        for (final event in part.items) {
+          byId[event.id] = event;
+        }
+      }
+      final merged = byId.values.toList()
+        ..sort((a, b) => a.interval.start.compareTo(b.interval.start));
+      return Page(merged, null);
+    }
     if (directions.isNotEmpty) {
       // Structured field: eventDirection (single). whereIn supports ≤10 values.
       query = query.where('eventDirection', whereIn: directions);

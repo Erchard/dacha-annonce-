@@ -214,3 +214,11 @@ Production `dacha-annonce`: Hosting «MI Nov-14 event meta, form labels/borders,
 - Форма «Створити подію»: новий текст публічності; лейбли над полями; scoped 2px блакитні рамки (hover/focus).
 - ndDEEj: без коду — Persistence.LOCAL + logout уже з a9RiN41.
 - Закрито (`done`): nS97OX…, U5H5C4…, VZHhCM…, ghIIHp…, ndDEEj….
+
+## MI tickets 18.11 — brand/schedule/support + form chrome/feedback/analytics — 2026-11-18
+
+Production `dacha-annonce`: Hosting + Firestore Rules «MI Nov-18 schedule month, brand, direction, green forms, feedback ochre, analytics». main.dart.js SHA256: `92420FC8AA0C1A8FF0147E5399AB5E25294EFF0AB7D2433C26726B1DD7F78F55`. Smoke HEAD 200: `/`, `/schedule`, `/bookings/new`, `/feedback`, `/support`, `/admin/analytics`.
+
+- `/schedule` default view = month; brand «Дача. Календар подій»; «Службові звернення»; direction «Внутрішні заходи Фонду» (+ rules, whereIn chunk).
+- Sitewide green 2px fields/labels; create-event stays blue; «Відгуки та пропозиції» ochre; analytics stats 1–6 + notes paragraph.
+- Закрито (`done`): gQN6QZA…, fsuqocr…, VLPrVVk…, 2h0yVQ5…, nJAWl3x…, wjfGBc4…, DsgigZy….

@@ -277,12 +277,12 @@ class _SupportPageState extends ConsumerState<SupportPage> {
 
   @override
   Widget build(BuildContext context) => AppFrame(
-    title: 'Звернення',
+    title: 'Службові звернення',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Звернення бачать адміністрація та розробник. Сюди також потрапляють «Зауваження та пропозиції» від користувачів. '
+          'Службові звернення бачать адміністрація та розробник. Сюди також потрапляють «Відгуки та пропозиції» від користувачів. '
           'Без фільтра спочатку нові, далі виконані, потім інші статуси.',
         ),
         const SizedBox(height: 16),
@@ -428,7 +428,7 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Дякуємо! Зауваження надіслано. Відповідь з’явиться в коментарях на цій сторінці.',
+            'Дякуємо! Відгук надіслано. Відповідь з’явиться в коментарях на цій сторінці.',
           ),
         ),
       );
@@ -442,53 +442,65 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
 
   @override
   Widget build(BuildContext context) => AppFrame(
-    title: 'Зауваження та пропозиції',
+    title: 'Відгуки та пропозиції',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Form(
-          key: form,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Опишіть зауваження або ідею покращення. Після надсилання ви '
-                'побачите звернення тут; відповідь адміністрації з’явиться в '
-                'коментарях.',
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: title,
-                maxLength: 160,
-                decoration: const InputDecoration(labelText: 'Тема'),
-                validator: (v) => (v?.trim().runes.length ?? 0) < 3
-                    ? 'Щонайменше 3 символи'
-                    : null,
-              ),
-              TextFormField(
-                controller: body,
-                maxLength: 10000,
-                minLines: 5,
-                maxLines: 12,
-                decoration: const InputDecoration(labelText: 'Опис'),
-                validator: (v) => (v?.trim().runes.length ?? 0) < 10
-                    ? 'Щонайменше 10 символів'
-                    : null,
-              ),
-              if (error != null) Problem(error!),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: busy ? null : submit,
-                child: Text(busy ? 'Надсилання…' : 'Надіслати'),
-              ),
-            ],
+        Theme(
+          data: ochreFormTheme(Theme.of(context)),
+          child: Form(
+            key: form,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Залиште відгук про сайт, повідомте про проблему, запропонуйте покращення. Відповідь адміністрації згодом з’явиться в коментарях.',
+                ),
+                const SizedBox(height: 20),
+                siteFormBlock(
+                  'Тема',
+                  TextFormField(
+                    controller: title,
+                    maxLength: 160,
+                    decoration: siteFormDecoration(),
+                    validator: (v) => (v?.trim().runes.length ?? 0) < 3
+                        ? 'Щонайменше 3 символи'
+                        : null,
+                  ),
+                  labelColor: siteFormLabelOchre,
+                ),
+                siteFormBlock(
+                  'Опис',
+                  TextFormField(
+                    controller: body,
+                    maxLength: 10000,
+                    minLines: 5,
+                    maxLines: 12,
+                    decoration: siteFormDecoration(),
+                    validator: (v) => (v?.trim().runes.length ?? 0) < 10
+                        ? 'Щонайменше 10 символів'
+                        : null,
+                  ),
+                  labelColor: siteFormLabelOchre,
+                ),
+                if (error != null) Problem(error!),
+                FilledButton(
+                  onPressed: busy ? null : submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: siteFormLabelOchre,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(busy ? 'Надсилання…' : 'Надіслати'),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 32),
-        Text('Мої зауваження', style: Theme.of(context).textTheme.titleLarge),
+        Text('Мої відгуки', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         const Text(
-          'Тут зберігаються ваші надіслані звернення. Відкрийте, щоб побачити '
+          'Тут зберігаються ваші надіслані відгуки. Відкрийте, щоб побачити '
           'статус і відповідь у коментарях.',
         ),
         const SizedBox(height: 12),
@@ -496,7 +508,7 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
         if (mineError != null)
           Problem(mineError!, retry: () => loadMine(true)),
         if (!loadingMine && mineError == null && mine.isEmpty)
-          const Text('Ви ще не надсилали зауважень.'),
+          const Text('Ви ще не надсилали відгуків.'),
         for (final t in mine)
           Card(
             child: AppLinkTap(
@@ -621,48 +633,56 @@ class _NewTicketPageState extends ConsumerState<NewTicketPage> {
 
   @override
   Widget build(BuildContext context) => AppFrame(
-    title: 'Нове звернення',
+    title: 'Нове службове звернення',
     child: Form(
       key: form,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DropdownButtonFormField<String>(
-            initialValue: type,
-            decoration: const InputDecoration(labelText: 'Тип'),
-            items: [
-              for (final t in ticketTypes)
-                DropdownMenuItem(value: t, child: Text(typeLabel(t))),
-            ],
-            onChanged: busy
-                ? null
-                : (v) {
-                    type = v!;
-                    _persistDraft();
-                  },
-          ),
-          TextFormField(
-            controller: title,
-            maxLength: 160,
-            decoration: const InputDecoration(labelText: 'Тема'),
-            validator: (v) => (v?.trim().runes.length ?? 0) < 3
-                ? 'Щонайменше 3 символи'
-                : null,
-          ),
-          TextFormField(
-            controller: body,
-            maxLength: 10000,
-            minLines: 5,
-            maxLines: 12,
-            decoration: const InputDecoration(
-              labelText: 'Опис',
-              helperText: 'Чорнетка зберігається в цьому браузері, навіть якщо відволіктися.',
+          siteFormBlock(
+            'Тип',
+            DropdownButtonFormField<String>(
+              initialValue: type,
+              decoration: siteFormDecoration(),
+              items: [
+                for (final t in ticketTypes)
+                  DropdownMenuItem(value: t, child: Text(typeLabel(t))),
+              ],
+              onChanged: busy
+                  ? null
+                  : (v) {
+                      type = v!;
+                      _persistDraft();
+                    },
             ),
-            validator: (v) => (v?.trim().runes.length ?? 0) < 10
-                ? 'Щонайменше 10 символів'
-                : null,
           ),
-          const SizedBox(height: 8),
+          siteFormBlock(
+            'Тема',
+            TextFormField(
+              controller: title,
+              maxLength: 160,
+              decoration: siteFormDecoration(),
+              validator: (v) => (v?.trim().runes.length ?? 0) < 3
+                  ? 'Щонайменше 3 символи'
+                  : null,
+            ),
+          ),
+          siteFormBlock(
+            'Опис',
+            TextFormField(
+              controller: body,
+              maxLength: 10000,
+              minLines: 5,
+              maxLines: 12,
+              decoration: siteFormDecoration(
+                helperText:
+                    'Чорнетка зберігається в цьому браузері, навіть якщо відволіктися.',
+              ),
+              validator: (v) => (v?.trim().runes.length ?? 0) < 10
+                  ? 'Щонайменше 10 символів'
+                  : null,
+            ),
+          ),
           OutlinedButton.icon(
             onPressed: busy || pendingPhotos.length >= maxAttachmentsPerTicket
                 ? null
@@ -946,7 +966,7 @@ class _TicketPageState extends ConsumerState<TicketPage> {
         role = ref.watch(profileProvider).asData?.value?.role.name ?? '';
     final isStaff = role == 'admin' || role == 'developer';
     return AppFrame(
-      title: t?.title ?? 'Звернення',
+      title: t?.title ?? 'Службове звернення',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

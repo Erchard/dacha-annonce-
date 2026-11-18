@@ -86,7 +86,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     view = isSchedule
         ? (const {'day', 'week', 'month'}.contains(widget.view)
               ? widget.view!
-              : 'week')
+              : 'month')
         : views.contains(widget.view)
         ? widget.view!
         : 'month';

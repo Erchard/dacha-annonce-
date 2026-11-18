@@ -49,6 +49,7 @@ const eventDirectionOptions = <String>[
   'Благодійність',
   'Партнерство та співпраця',
   'Дозвілля та спілкування',
+  'Внутрішні заходи Фонду',
 ];
 
 const eventFormatOptions = <String>[

@@ -66,8 +66,15 @@ final openTicketsCountProvider = FutureProvider<int>((ref) async {
     return 0;
   }
   final repo = ref.read(supportRepositoryProvider);
-  final fresh = await repo.list(PageRequest(limit: 25), status: 'new');
-  final active =
-      await repo.list(PageRequest(limit: 25), status: 'in_progress');
+  final fresh = await repo.list(
+    PageRequest(limit: 25),
+    status: 'new',
+    types: serviceTicketTypes,
+  );
+  final active = await repo.list(
+    PageRequest(limit: 25),
+    status: 'in_progress',
+    types: serviceTicketTypes,
+  );
   return fresh.items.length + active.items.length;
 });

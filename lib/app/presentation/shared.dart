@@ -96,6 +96,75 @@ String statusLabel(BookingStatus status) => switch (status) {
 /// Sitewide form labels (nJAWl3x): 18px bold above fields.
 const siteFormLabelGreen = Color(0xFF1B4332);
 const siteFormLabelOchre = Color(0xFF8B5A00);
+const siteFormTitleBlue = Color(0xFF0A3D62);
+
+/// Top-menu chrome (tQm): 18px bold dark-green text; blue frames with green focus.
+const topNavTextStyle = TextStyle(
+  fontSize: 18,
+  fontWeight: FontWeight.w700,
+  color: siteFormLabelGreen,
+);
+const _topNavBlue = Color(0xFF7EB6D9);
+const _topNavBlueHover = Color(0xFF4A90B8);
+const _topNavGreenFocus = Color(0xFF1B4332);
+
+ButtonStyle topNavLinkStyle({bool outlined = true}) {
+  final text = WidgetStateProperty.all(topNavTextStyle);
+  final fg = WidgetStateProperty.all(siteFormLabelGreen);
+  if (!outlined) {
+    return ButtonStyle(
+      foregroundColor: fg,
+      textStyle: text,
+      minimumSize: WidgetStateProperty.all(const Size(48, 48)),
+      padding: WidgetStateProperty.all(
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      ),
+    );
+  }
+  return ButtonStyle(
+    foregroundColor: fg,
+    textStyle: text,
+    minimumSize: WidgetStateProperty.all(const Size(48, 48)),
+    padding: WidgetStateProperty.all(
+      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    ),
+    side: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.focused) ||
+          states.contains(WidgetState.pressed)) {
+        return const BorderSide(color: _topNavGreenFocus, width: 2);
+      }
+      if (states.contains(WidgetState.hovered)) {
+        return const BorderSide(color: _topNavBlueHover, width: 2);
+      }
+      return const BorderSide(color: _topNavBlue, width: 2);
+    }),
+    overlayColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.focused) ||
+          states.contains(WidgetState.pressed)) {
+        return const Color(0x332F5A42);
+      }
+      if (states.contains(WidgetState.hovered)) {
+        return const Color(0x1A7EB6D9);
+      }
+      return null;
+    }),
+    shadowColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.focused)) {
+        return const Color(0x662F5A42);
+      }
+      return Colors.transparent;
+    }),
+    elevation: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.focused)) return 3;
+      return 0;
+    }),
+    shape: WidgetStateProperty.all(
+      const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(4)),
+      ),
+    ),
+  );
+}
 
 Widget siteFormLabel(String text, {Color color = siteFormLabelGreen}) => Text(
   text,
@@ -165,10 +234,13 @@ class AppFrame extends ConsumerWidget {
     required this.title,
     required this.child,
     this.backgroundColor,
+    this.titleColor,
   });
   final String title;
   final Widget child;
   final Color? backgroundColor;
+  /// Override page title color; default green, create-event uses blue (mJq/pZ3).
+  final Color? titleColor;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider).asData?.value;
@@ -186,66 +258,121 @@ class AppFrame extends ConsumerWidget {
         narrow && profile?.role != UserRole.developer && profile != null
             ? !profile.isDisabled
             : narrow && profile == null;
+    final isCreateEvent =
+        location == '/bookings/new' || location == '/admin/events/new';
+    final resolvedTitleColor =
+        titleColor ??
+        (isCreateEvent ? siteFormTitleBlue : siteFormLabelGreen);
+    final navStyle = topNavLinkStyle();
 
     final publicNav = <Widget>[
-      const AppLink(to: '/', child: Text('Календар')),
-      const AppLink(to: '/schedule', child: Text('Розклад')),
-      const AppLink(to: '/archive', child: Text('Архів подій')),
-      const AppLink(to: '/rooms', child: Text('Локації')),
-      if (profile?.role != UserRole.developer)
-        AppLink(to: bookingPath, child: const Text('Створити подію')),
-      const AppLink(
-        to: '/feedback',
-        child: Text('Відгуки та пропозиції'),
+      AppLink(
+        to: '/',
+        outlined: true,
+        style: navStyle,
+        child: const Text('Календар'),
       ),
-      const AppLink(to: '/contacts', child: Text('Контакти')),
-      const AppLink(to: '/help', child: Text('Інструкція')),
+      AppLink(
+        to: '/schedule',
+        outlined: true,
+        style: navStyle,
+        child: const Text('Розклад'),
+      ),
+      AppLink(
+        to: '/archive',
+        outlined: true,
+        style: navStyle,
+        child: const Text('Архів подій'),
+      ),
+      AppLink(
+        to: '/rooms',
+        outlined: true,
+        style: navStyle,
+        child: const Text('Локації'),
+      ),
+      if (profile?.role != UserRole.developer)
+        AppLink(
+          to: bookingPath,
+          outlined: true,
+          style: navStyle,
+          child: const Text('Створити подію'),
+        ),
+      AppLink(
+        to: '/feedback',
+        outlined: true,
+        style: navStyle,
+        child: const Text('Відгуки та пропозиції'),
+      ),
+      AppLink(
+        to: '/contacts',
+        outlined: true,
+        style: navStyle,
+        child: const Text('Контакти'),
+      ),
+      AppLink(
+        to: '/help',
+        outlined: true,
+        style: navStyle,
+        child: const Text('Інструкція'),
+      ),
     ];
     final staffNav = <Widget>[
       if (profile?.role == UserRole.admin && !profile!.isDisabled) ...[
         _navBadge(
           count: pendingCount,
-          child: const AppLink(
+          child: AppLink(
             to: '/admin',
             outlined: true,
-            icon: Icon(Icons.edit_calendar),
-            child: Text('Керувати подіями'),
+            style: navStyle,
+            icon: const Icon(Icons.edit_calendar),
+            child: const Text('Керувати подіями'),
           ),
         ),
-        const AppLink(
+        AppLink(
+          to: '/admin/feedback',
+          outlined: true,
+          style: navStyle,
+          child: const Text('Керувати відгуками'),
+        ),
+        AppLink(
           to: '/admin/users',
           outlined: true,
-          child: Text('Користувачі'),
+          style: navStyle,
+          child: const Text('Користувачі'),
         ),
-        const AppLink(
+        AppLink(
           to: '/admin/analytics',
           outlined: true,
-          child: Text('Аналітика'),
+          style: navStyle,
+          child: const Text('Аналітика'),
         ),
         _navBadge(
           count: openTickets,
-          child: const AppLink(
+          child: AppLink(
             to: '/support',
             outlined: true,
-            child: Text('Службові звернення'),
+            style: navStyle,
+            child: const Text('Службові звернення'),
           ),
         ),
       ] else if (profile != null &&
           !profile.isDisabled &&
           profile.role == UserRole.organizer)
-        const AppLink(
+        AppLink(
           to: '/my-bookings',
           outlined: true,
-          icon: Icon(Icons.edit_calendar),
-          child: Text('Мої події'),
+          style: navStyle,
+          icon: const Icon(Icons.edit_calendar),
+          child: const Text('Мої події'),
         )
       else if (profile?.role == UserRole.developer && !profile!.isDisabled)
         _navBadge(
           count: openTickets,
-          child: const AppLink(
+          child: AppLink(
             to: '/support',
             outlined: true,
-            child: Text('Службові звернення'),
+            style: navStyle,
+            child: const Text('Службові звернення'),
           ),
         ),
     ];
@@ -267,6 +394,7 @@ class AppFrame extends ConsumerWidget {
       }
       if (location.startsWith('/rooms')) return 2;
       if (location.startsWith('/my-bookings') ||
+          location.startsWith('/my-feedback') ||
           location.startsWith('/admin') ||
           location.startsWith('/support')) {
         return 3;
@@ -361,11 +489,16 @@ class AppFrame extends ConsumerWidget {
               ),
               if (profile != null &&
                   !profile.isDisabled &&
-                  profile.role != UserRole.developer)
+                  profile.role != UserRole.developer) ...[
                 ListTile(
                   title: const Text('Мої події та заявки'),
                   onTap: () => context.go('/my-bookings'),
                 ),
+                ListTile(
+                  title: const Text('Мої відгуки'),
+                  onTap: () => context.go('/my-feedback'),
+                ),
+              ],
               if (profile?.role == UserRole.admin && !profile!.isDisabled) ...[
                 ListTile(
                   title: Row(
@@ -380,6 +513,10 @@ class AppFrame extends ConsumerWidget {
                     ],
                   ),
                   onTap: () => context.go('/admin'),
+                ),
+                ListTile(
+                  title: const Text('Керувати відгуками'),
+                  onTap: () => context.go('/admin/feedback'),
                 ),
                 ListTile(
                   title: const Text('Редагувати локації'),
@@ -540,9 +677,10 @@ class AppFrame extends ConsumerWidget {
                                   header: true,
                                   child: Text(
                                     title,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.headlineMedium,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineMedium
+                                        ?.copyWith(color: resolvedTitleColor),
                                   ),
                                 ),
                                 const SizedBox(height: 20),

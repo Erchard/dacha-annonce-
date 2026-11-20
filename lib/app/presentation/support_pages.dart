@@ -57,6 +57,42 @@ DateTime? supportTimestamp(dynamic value) {
   return null;
 }
 
+const _ticketFrameGreen = Color(0xFF2F5A42);
+const _ticketFrameClosed = Color(0xFF8FA896);
+
+bool ticketStatusTerminal(String status) =>
+    status == 'closed' || status == 'done' || status == 'rejected';
+
+/// List card: 2px green like form fields; terminal statuses use a thin frame.
+Widget supportTicketCard({
+  required Ticket ticket,
+  String? subtitle,
+  Widget? trailing,
+}) {
+  final thin = ticketStatusTerminal(ticket.status);
+  return Card(
+    shape: RoundedRectangleBorder(
+      borderRadius: const BorderRadius.all(Radius.circular(4)),
+      side: BorderSide(
+        color: thin ? _ticketFrameClosed : _ticketFrameGreen,
+        width: thin ? 1 : 2,
+      ),
+    ),
+    child: AppLinkTap(
+      to: '/support/${ticket.id}',
+      builder: (context, onTap) => ListTile(
+        title: Text(ticket.title),
+        subtitle: Text(
+          subtitle ??
+              '${ticketStatusLabel(ticket.status)} · ${priorityLabel(ticket.priority)} · ${localDate(ticket.lastActivityAt)}',
+        ),
+        onTap: onTap,
+        trailing: trailing,
+      ),
+    ),
+  );
+}
+
 class SupportPage extends ConsumerStatefulWidget {
   const SupportPage({super.key});
   @override
@@ -101,8 +137,17 @@ class _SupportPageState extends ConsumerState<SupportPage> {
     try {
       final repo = ref.read(supportRepositoryProvider);
       if (allSections) {
-        final n = await repo.list(PageRequest(), status: 'new');
-        final d = await repo.list(PageRequest(), status: 'done');
+        final n = await repo.list(
+          PageRequest(),
+          status: 'new',
+          types: serviceTicketTypes,
+        );
+        final d = await repo.list(
+          PageRequest(),
+          status: 'done',
+          types: serviceTicketTypes,
+        );
+        // One whereIn only: filter service types client-side for the mixed block.
         final o = await repo.listByStatuses(
           PageRequest(),
           statuses: _otherStatuses,
@@ -113,11 +158,17 @@ class _SupportPageState extends ConsumerState<SupportPage> {
           newsNext = n.next;
           dones = d.items;
           donesNext = d.next;
-          others = o.items;
+          others = o.items
+              .where((t) => serviceTicketTypes.contains(t.type))
+              .toList();
           othersNext = o.next;
         });
       } else {
-        final page = await repo.list(PageRequest(), status: status);
+        final page = await repo.list(
+          PageRequest(),
+          status: status,
+          types: serviceTicketTypes,
+        );
         if (!mounted) return;
         setState(() {
           filtered = page.items;
@@ -137,9 +188,11 @@ class _SupportPageState extends ConsumerState<SupportPage> {
       error = null;
     });
     try {
-      final page = await ref
-          .read(supportRepositoryProvider)
-          .list(PageRequest(after: filteredNext), status: status);
+      final page = await ref.read(supportRepositoryProvider).list(
+        PageRequest(after: filteredNext),
+        status: status,
+        types: serviceTicketTypes,
+      );
       if (mounted) {
         setState(() {
           filtered = [...filtered, ...page.items];
@@ -164,6 +217,7 @@ class _SupportPageState extends ConsumerState<SupportPage> {
         final page = await repo.list(
           PageRequest(after: newsNext),
           status: 'new',
+          types: serviceTicketTypes,
         );
         if (mounted) {
           setState(() {
@@ -175,6 +229,7 @@ class _SupportPageState extends ConsumerState<SupportPage> {
         final page = await repo.list(
           PageRequest(after: donesNext),
           status: 'done',
+          types: serviceTicketTypes,
         );
         if (mounted) {
           setState(() {
@@ -189,7 +244,10 @@ class _SupportPageState extends ConsumerState<SupportPage> {
         );
         if (mounted) {
           setState(() {
-            others = [...others, ...page.items];
+            others = [
+              ...others,
+              ...page.items.where((t) => serviceTicketTypes.contains(t.type)),
+            ];
             othersNext = page.next;
           });
         }
@@ -232,24 +290,15 @@ class _SupportPageState extends ConsumerState<SupportPage> {
   Widget ticketCard(Ticket t) {
     final isAdmin =
         ref.watch(profileProvider).asData?.value?.role == UserRole.admin;
-    return Card(
-      child: AppLinkTap(
-        to: '/support/${t.id}',
-        builder: (context, onTap) => ListTile(
-          title: Text(t.title),
-          subtitle: Text(
-            '${ticketStatusLabel(t.status)} · ${priorityLabel(t.priority)} · ${localDate(t.lastActivityAt)}',
-          ),
-          onTap: onTap,
-          trailing: isAdmin && t.status == 'new'
-              ? IconButton(
-                  tooltip: 'Видалити звернення',
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: busy ? null : () => withdraw(t),
-                )
-              : null,
-        ),
-      ),
+    return supportTicketCard(
+      ticket: t,
+      trailing: isAdmin && t.status == 'new'
+          ? IconButton(
+              tooltip: 'Видалити звернення',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: busy ? null : () => withdraw(t),
+            )
+          : null,
     );
   }
 
@@ -282,7 +331,8 @@ class _SupportPageState extends ConsumerState<SupportPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Службові звернення бачать адміністрація та розробник. Сюди також потрапляють «Відгуки та пропозиції» від користувачів. '
+          'Службові звернення бачать адміністрація та розробник. '
+          'Відгуки користувачів — окремо в «Керувати відгуками». '
           'Без фільтра спочатку нові, далі виконані, потім інші статуси.',
         ),
         const SizedBox(height: 16),
@@ -368,17 +418,12 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
   final form = GlobalKey<FormState>();
   late final String id;
   bool busy = false;
-  bool loadingMine = true;
   Object? error;
-  Object? mineError;
-  List<Ticket> mine = [];
-  PageCursor? mineNext;
 
   @override
   void initState() {
     super.initState();
     id = ref.read(supportRepositoryProvider).newId();
-    Future.microtask(() => loadMine(true));
   }
 
   @override
@@ -386,32 +431,6 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
     title.dispose();
     body.dispose();
     super.dispose();
-  }
-
-  Future<void> loadMine(bool reset) async {
-    setState(() {
-      loadingMine = true;
-      mineError = null;
-      if (reset) {
-        mine = [];
-        mineNext = null;
-      }
-    });
-    try {
-      final page = await ref
-          .read(supportRepositoryProvider)
-          .listMine(PageRequest(after: mineNext));
-      if (mounted) {
-        setState(() {
-          mine = [...mine, ...page.items];
-          mineNext = page.next;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => mineError = e);
-    } finally {
-      if (mounted) setState(() => loadingMine = false);
-    }
   }
 
   Future<void> submit() async {
@@ -428,7 +447,7 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Дякуємо! Відгук надіслано. Відповідь з’явиться в коментарях на цій сторінці.',
+            'Дякуємо! Відгук надіслано. Відповідь з’явиться в коментарях.',
           ),
         ),
       );
@@ -443,88 +462,263 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
   @override
   Widget build(BuildContext context) => AppFrame(
     title: 'Відгуки та пропозиції',
+    child: Theme(
+      data: ochreFormTheme(Theme.of(context)),
+      child: Form(
+        key: form,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Залиште відгук про сайт, повідомте про проблему, запропонуйте покращення. Відповідь адміністрації згодом з’явиться в коментарях.',
+            ),
+            const SizedBox(height: 12),
+            const AppLink(
+              to: '/my-feedback',
+              child: Text('Мої відгуки'),
+            ),
+            const SizedBox(height: 20),
+            siteFormBlock(
+              'Тема',
+              TextFormField(
+                controller: title,
+                maxLength: 160,
+                decoration: siteFormDecoration(),
+                validator: (v) => (v?.trim().runes.length ?? 0) < 3
+                    ? 'Щонайменше 3 символи'
+                    : null,
+              ),
+              labelColor: siteFormLabelOchre,
+            ),
+            siteFormBlock(
+              'Опис',
+              TextFormField(
+                controller: body,
+                maxLength: 10000,
+                minLines: 5,
+                maxLines: 12,
+                decoration: siteFormDecoration(),
+                validator: (v) => (v?.trim().runes.length ?? 0) < 10
+                    ? 'Щонайменше 10 символів'
+                    : null,
+              ),
+              labelColor: siteFormLabelOchre,
+            ),
+            if (error != null) Problem(error!),
+            FilledButton(
+              onPressed: busy ? null : submit,
+              style: FilledButton.styleFrom(
+                backgroundColor: siteFormLabelOchre,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(busy ? 'Надсилання…' : 'Надіслати'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// User inbox for own feedback (`type: feedback`).
+class MyFeedbackPage extends ConsumerStatefulWidget {
+  const MyFeedbackPage({super.key});
+  @override
+  ConsumerState<MyFeedbackPage> createState() => _MyFeedbackPageState();
+}
+
+class _MyFeedbackPageState extends ConsumerState<MyFeedbackPage> {
+  bool loading = true;
+  Object? error;
+  List<Ticket> mine = [];
+  PageCursor? next;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => load(true));
+  }
+
+  Future<void> load(bool reset) async {
+    setState(() {
+      loading = true;
+      error = null;
+      if (reset) {
+        mine = [];
+        next = null;
+      }
+    });
+    try {
+      final page = await ref
+          .read(supportRepositoryProvider)
+          .listMine(PageRequest(after: next));
+      if (!mounted) return;
+      final feedback = page.items.where((t) => t.type == 'feedback');
+      setState(() {
+        mine = [...mine, ...feedback];
+        next = page.next;
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = e);
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AppFrame(
+    title: 'Мої відгуки',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Theme(
-          data: ochreFormTheme(Theme.of(context)),
-          child: Form(
-            key: form,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Залиште відгук про сайт, повідомте про проблему, запропонуйте покращення. Відповідь адміністрації згодом з’явиться в коментарях.',
-                ),
-                const SizedBox(height: 20),
-                siteFormBlock(
-                  'Тема',
-                  TextFormField(
-                    controller: title,
-                    maxLength: 160,
-                    decoration: siteFormDecoration(),
-                    validator: (v) => (v?.trim().runes.length ?? 0) < 3
-                        ? 'Щонайменше 3 символи'
-                        : null,
-                  ),
-                  labelColor: siteFormLabelOchre,
-                ),
-                siteFormBlock(
-                  'Опис',
-                  TextFormField(
-                    controller: body,
-                    maxLength: 10000,
-                    minLines: 5,
-                    maxLines: 12,
-                    decoration: siteFormDecoration(),
-                    validator: (v) => (v?.trim().runes.length ?? 0) < 10
-                        ? 'Щонайменше 10 символів'
-                        : null,
-                  ),
-                  labelColor: siteFormLabelOchre,
-                ),
-                if (error != null) Problem(error!),
-                FilledButton(
-                  onPressed: busy ? null : submit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: siteFormLabelOchre,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: Text(busy ? 'Надсилання…' : 'Надіслати'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 32),
-        Text('Мої відгуки', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
         const Text(
-          'Тут зберігаються ваші надіслані відгуки. Відкрийте, щоб побачити '
-          'статус і відповідь у коментарях.',
+          'Ваші надіслані відгуки. Відкрийте, щоб побачити статус і відповідь у коментарях.',
         ),
         const SizedBox(height: 12),
-        if (loadingMine) const LinearProgressIndicator(),
-        if (mineError != null)
-          Problem(mineError!, retry: () => loadMine(true)),
-        if (!loadingMine && mineError == null && mine.isEmpty)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton(
+            onPressed: () => context.go('/feedback'),
+            style: FilledButton.styleFrom(
+              backgroundColor: siteFormLabelOchre,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Новий відгук'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (loading) const LinearProgressIndicator(),
+        if (error != null) Problem(error!, retry: () => load(true)),
+        if (!loading && error == null && mine.isEmpty)
           const Text('Ви ще не надсилали відгуків.'),
         for (final t in mine)
-          Card(
-            child: AppLinkTap(
-              to: '/support/${t.id}',
-              builder: (context, onTap) => ListTile(
-                title: Text(t.title),
-                subtitle: Text(
-                  '${ticketStatusLabel(t.status)} · ${localDate(t.lastActivityAt)}',
-                ),
-                onTap: onTap,
-              ),
-            ),
+          supportTicketCard(
+            ticket: t,
+            subtitle:
+                '${ticketStatusLabel(t.status)} · ${localDate(t.lastActivityAt)}',
           ),
-        if (mineNext != null)
+        if (next != null)
           TextButton(
-            onPressed: loadingMine ? null : () => loadMine(false),
+            onPressed: loading ? null : () => load(false),
+            child: const Text('Завантажити ще'),
+          ),
+      ],
+    ),
+  );
+}
+
+/// Admin inbox for user feedback only.
+class AdminFeedbackPage extends ConsumerStatefulWidget {
+  const AdminFeedbackPage({super.key});
+  @override
+  ConsumerState<AdminFeedbackPage> createState() => _AdminFeedbackPageState();
+}
+
+class _AdminFeedbackPageState extends ConsumerState<AdminFeedbackPage> {
+  String? status;
+  List<Ticket> items = [];
+  PageCursor? itemsNext;
+  Object? error;
+  bool busy = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(reload);
+  }
+
+  Future<void> reload() async {
+    setState(() {
+      busy = true;
+      error = null;
+      items = [];
+      itemsNext = null;
+    });
+    try {
+      final page = await ref.read(supportRepositoryProvider).list(
+        PageRequest(),
+        status: status,
+        types: const ['feedback'],
+      );
+      if (!mounted) return;
+      setState(() {
+        items = page.items;
+        itemsNext = page.next;
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> loadMore() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final page = await ref.read(supportRepositoryProvider).list(
+        PageRequest(after: itemsNext),
+        status: status,
+        types: const ['feedback'],
+      );
+      if (mounted) {
+        setState(() {
+          items = [...items, ...page.items];
+          itemsNext = page.next;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AppFrame(
+    title: 'Керувати відгуками',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Відгуки та пропозиції користувачів сайту. Службові звернення адміністрації — окремо в «Службові звернення».',
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            DropdownButton<String>(
+              value: status,
+              hint: const Text('Усі статуси'),
+              onChanged: busy
+                  ? null
+                  : (v) {
+                      status = v;
+                      reload();
+                    },
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Усі статуси')),
+                for (final s in ticketStatuses)
+                  DropdownMenuItem(value: s, child: Text(ticketStatusLabel(s))),
+              ],
+            ),
+            TextButton(
+              onPressed: busy ? null : reload,
+              child: const Text('Оновити'),
+            ),
+          ],
+        ),
+        if (busy) const LinearProgressIndicator(),
+        if (error != null) Problem(error!, retry: reload),
+        if (!busy && error == null && items.isEmpty)
+          const Text('Відгуків з цим фільтром немає.'),
+        for (final t in items) supportTicketCard(ticket: t),
+        if (itemsNext != null)
+          TextButton(
+            onPressed: busy ? null : loadMore,
             child: const Text('Завантажити ще'),
           ),
       ],
@@ -1278,9 +1472,19 @@ class _TicketPageState extends ConsumerState<TicketPage> {
                 TextButton(
                   onPressed: busy
                       ? null
-                      : () => context.go(isStaff ? '/support' : '/feedback'),
+                      : () => context.go(
+                            isStaff
+                                ? (t.type == 'feedback'
+                                      ? '/admin/feedback'
+                                      : '/support')
+                                : '/my-feedback',
+                          ),
                   child: Text(
-                    isStaff ? 'До списку звернень' : 'До моїх зауважень',
+                    isStaff
+                        ? (t.type == 'feedback'
+                              ? 'До відгуків'
+                              : 'До списку звернень')
+                        : 'До моїх відгуків',
                   ),
                 ),
               ],

@@ -222,3 +222,14 @@ Production `dacha-annonce`: Hosting + Firestore Rules «MI Nov-18 schedule month
 - `/schedule` default view = month; brand «Дача. Календар подій»; «Службові звернення»; direction «Внутрішні заходи Фонду» (+ rules, whereIn chunk).
 - Sitewide green 2px fields/labels; create-event stays blue; «Відгуки та пропозиції» ochre; analytics stats 1–6 + notes paragraph.
 - Закрито (`done`): gQN6QZA…, fsuqocr…, VLPrVVk…, 2h0yVQ5…, nJAWl3x…, wjfGBc4…, DsgigZy….
+
+## MI tickets 20.11 — feedback split + titles/cards/nav/frames — 2026-11-20
+
+Production `dacha-annonce`: Hosting + Firestore indexes (`type` + `status` + `lastActivityAt`) «MI Nov-20 feedback split, titles, cards, top nav blue, green frames». main.dart.js SHA256: `3DDEF869959E64DCCAF783AE930D95BF2AB8F105381059C20F262D29932E4804`. Smoke HEAD 200: `/`, `/feedback`, `/my-feedback`, `/admin/feedback`, `/support`, `/bookings/new`.
+
+- Відгуки відокремлено від службових: `/my-feedback`, `/admin/feedback` («Керувати відгуками»), support list без `type: feedback`.
+- Заголовки форм темно-зелені; «Створити подію» темно-синій.
+- Картки службових: 2px зелені; closed/done/rejected — тонкі.
+- Верхнє меню: 18px bold dark-green, рамки блакитні 2px (hover темніший, focus зелений + glow).
+- Контент/поля: 2px dark-green; create-event blue; feedback ochre.
+- Закрито (`done`): LpscGj2…, mJqkvbO…, 8RGh5CV…, pZ3thyV…, n3k25eg…, oCuAGMz…, tQmZxSq….

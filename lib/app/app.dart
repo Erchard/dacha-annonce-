@@ -113,7 +113,8 @@ ThemeData dachaTheme() {
       margin: EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(4)),
-        side: BorderSide(color: border),
+        // Content frames (oCu): 2px dark-green; top-nav uses blue separately.
+        side: BorderSide(color: Color(0xFF2F5A42), width: 2),
       ),
     ),
     focusColor: const Color(0x4036674D),
@@ -156,19 +157,38 @@ ThemeData dachaTheme() {
         fontSize: 14,
         fontWeight: FontWeight.w500,
       ),
-      side: BorderSide(color: border),
+      side: BorderSide(color: Color(0xFF2F5A42), width: 2),
       shape: shape,
     ),
     dividerTheme: const DividerThemeData(color: border, thickness: 1),
-    dialogTheme: const DialogThemeData(
+    dialogTheme: DialogThemeData(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
-      shape: shape,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(4)),
+        side: const BorderSide(color: Color(0xFF2F5A42), width: 2),
+      ),
     ),
-    popupMenuTheme: const PopupMenuThemeData(
+    popupMenuTheme: PopupMenuThemeData(
       color: Colors.white,
       surfaceTintColor: Colors.transparent,
-      shape: shape,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(4)),
+        side: const BorderSide(color: Color(0xFF2F5A42), width: 2),
+      ),
+    ),
+    dropdownMenuTheme: const DropdownMenuThemeData(
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderSide: BorderSide(color: Color(0xFF2F5A42), width: 2),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: Color(0xFF2F5A42), width: 2),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: Color(0xFF1B4332), width: 2),
+        ),
+      ),
     ),
   );
 }
@@ -331,10 +351,24 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
       ),
     ),
     GoRoute(
+      path: '/admin/feedback',
+      builder: (context, state) => const ProtectedPage(
+        roles: [UserRole.admin],
+        child: AdminFeedbackPage(),
+      ),
+    ),
+    GoRoute(
       path: '/feedback',
       builder: (context, state) => const ProtectedPage(
         roles: [UserRole.organizer, UserRole.admin],
         child: FeedbackPage(),
+      ),
+    ),
+    GoRoute(
+      path: '/my-feedback',
+      builder: (context, state) => const ProtectedPage(
+        roles: [UserRole.organizer, UserRole.admin],
+        child: MyFeedbackPage(),
       ),
     ),
     GoRoute(

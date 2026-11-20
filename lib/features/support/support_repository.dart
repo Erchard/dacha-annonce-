@@ -17,6 +17,8 @@ const ticketStatuses = [
 ];
 const ticketPriorities = ['low', 'normal', 'high'];
 const ticketTypes = ['bug', 'feature', 'feedback', 'general'];
+/// Service tickets only — exclude user «Відгуки» from staff support inbox.
+const serviceTicketTypes = ['bug', 'feature', 'general'];
 const attachmentContentTypes = {'image/jpeg', 'image/png', 'image/webp'};
 const maxAttachmentBytes = 700000;
 const maxAttachmentsPerTicket = 5;
@@ -99,11 +101,26 @@ class SupportRepository {
     final d = await db.collection('supportTickets').doc(id).get();
     return d.exists ? Ticket(id, d.data()!) : null;
   });
-  Future<Page<Ticket>> list(PageRequest page, {String? status}) =>
-      firestoreCall(() async {
+  Future<Page<Ticket>> list(
+    PageRequest page, {
+    String? status,
+    List<String>? types,
+  }) => firestoreCall(() async {
+        if (types != null &&
+            (types.isEmpty || types.any((t) => !ticketTypes.contains(t)))) {
+          throw const DomainException(ErrorCode.validation, field: 'type');
+        }
         Query<Map<String, dynamic>> q = db.collection('supportTickets');
+        final typeKey = types == null
+            ? ''
+            : ':types:${([...types]..sort()).join(',')}';
+        if (types != null) {
+          q = types.length == 1
+              ? q.where('type', isEqualTo: types.first)
+              : q.where('type', whereIn: types);
+        }
         if (status != null) q = q.where('status', isEqualTo: status);
-        final key = 'support:$status';
+        final key = 'support:$status$typeKey';
         q = q
             .orderBy('lastActivityAt', descending: true)
             .orderBy(FieldPath.documentId);
@@ -127,18 +144,37 @@ class SupportRepository {
       });
 
   /// Tickets whose status is one of [statuses], newest activity first.
+  ///
+  /// Firestore allows only one `whereIn` per query, so when [types] has more
+  /// than one value the caller should query per-status via [list] instead.
   Future<Page<Ticket>> listByStatuses(
     PageRequest page, {
     required List<String> statuses,
+    List<String>? types,
   }) => firestoreCall(() async {
     if (statuses.isEmpty ||
         statuses.any((s) => !ticketStatuses.contains(s))) {
       throw const DomainException(ErrorCode.validation, field: 'status');
     }
+    if (types != null &&
+        (types.isEmpty || types.any((t) => !ticketTypes.contains(t)))) {
+      throw const DomainException(ErrorCode.validation, field: 'type');
+    }
+    if (types != null && types.length > 1 && statuses.length > 1) {
+      throw const DomainException(ErrorCode.validation, field: 'type');
+    }
     final sorted = [...statuses]..sort();
-    final key = 'support:in:${sorted.join(',')}';
-    Query<Map<String, dynamic>> q = db
-        .collection('supportTickets')
+    final typeKey = types == null
+        ? ''
+        : ':types:${([...types]..sort()).join(',')}';
+    final key = 'support:in:${sorted.join(',')}$typeKey';
+    Query<Map<String, dynamic>> q = db.collection('supportTickets');
+    if (types != null) {
+      q = types.length == 1
+          ? q.where('type', isEqualTo: types.first)
+          : q.where('type', whereIn: types);
+    }
+    q = q
         .where('status', whereIn: sorted)
         .orderBy('lastActivityAt', descending: true)
         .orderBy(FieldPath.documentId);

@@ -246,49 +246,7 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
   String slotLabel(int hour, int minute) =>
       '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
-  static const _formLabelColor = Color(0xFF0A3D62);
-  static const _borderIdle = Color(0xFF7EB6D9);
-  static const _borderHover = Color(0xFF4A90C0);
-  static const _borderFocus = Color(0xFF1E6BB8);
-
-  ThemeData bookingFormTheme(ThemeData base) {
-    const radius = BorderRadius.all(Radius.circular(4));
-    OutlineInputBorder side(Color color) => OutlineInputBorder(
-      borderRadius: radius,
-      borderSide: BorderSide(color: color, width: 2),
-    );
-    final statefulBorder = WidgetStateInputBorder.resolveWith((states) {
-      if (states.contains(WidgetState.focused)) return side(_borderFocus);
-      if (states.contains(WidgetState.hovered)) return side(_borderHover);
-      return side(_borderIdle);
-    });
-    return base.copyWith(
-      focusColor: const Color(0x401E6BB8),
-      shadowColor: const Color(0x401E6BB8),
-      inputDecorationTheme: base.inputDecorationTheme.copyWith(
-        filled: true,
-        fillColor: Colors.white,
-        floatingLabelBehavior: FloatingLabelBehavior.never,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 16,
-        ),
-        border: statefulBorder,
-        enabledBorder: side(_borderIdle),
-        focusedBorder: side(_borderFocus),
-        focusedErrorBorder: side(_borderFocus),
-      ),
-    );
-  }
-
-  Widget formLabel(String text) => Text(
-    text,
-    style: const TextStyle(
-      fontSize: 18,
-      fontWeight: FontWeight.bold,
-      color: _formLabelColor,
-    ),
-  );
+  Widget formLabel(String text) => siteFormLabel(text);
 
   /// Label above control, 8 px to field, ≥20 px before the next block.
   Widget formBlock(String label, Widget field) => Padding(
@@ -953,30 +911,28 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
           ? Problem(loadError!, retry: load)
           : rooms.isEmpty
           ? const Text('Поки немає доступних локацій. Додайте їх у Керуванні.')
-          : Theme(
-              data: bookingFormTheme(Theme.of(context)),
-              child: Form(
-                key: form,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      widget.editSeries
-                          ? 'Зміни застосуються до сьогоднішніх і майбутніх входжень цієї серії. Дата кожного входження зберігається; час доби, локація, текст і напрямки — з форми нижче. Минулі входження не змінюються.'
-                          : 'Усі дані форми стануть загальнодоступними після публікації події — зазначайте лише те, що можна оприлюднити.',
+          : Form(
+              key: form,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    widget.editSeries
+                        ? 'Зміни застосуються до сьогоднішніх і майбутніх входжень цієї серії. Дата кожного входження зберігається; час доби, локація, текст і напрямки — з форми нижче. Минулі входження не змінюються.'
+                        : 'Усі дані форми стануть загальнодоступними після публікації події — зазначайте лише те, що можна оприлюднити.',
+                  ),
+                  const SizedBox(height: 20),
+                  formBlock(
+                    'Назва події',
+                    TextFormField(
+                      controller: title,
+                      decoration: formDecoration(),
+                      maxLength: 120,
+                      validator: (v) => v == null || v.trim().length < 3
+                          ? 'Укажіть назву від 3 символів.'
+                          : null,
                     ),
-                    const SizedBox(height: 20),
-                    formBlock(
-                      'Назва події',
-                      TextFormField(
-                        controller: title,
-                        decoration: formDecoration(),
-                        maxLength: 120,
-                        validator: (v) => v == null || v.trim().length < 3
-                            ? 'Укажіть назву від 3 символів.'
-                            : null,
-                      ),
-                    ),
+                  ),
                     formBlock(
                       'Опис',
                       TextFormField(
@@ -1383,18 +1339,17 @@ class _BookingFormPageState extends ConsumerState<BookingFormPage> {
                             : 'Зберегти зміни',
                       ),
                     ),
-                    TextButton(
-                      onPressed: busy
-                          ? null
-                          : () => context.go(
-                              original == null
-                                  ? '/my-bookings'
-                                  : '/bookings/$id',
-                            ),
-                      child: const Text('Назад'),
-                    ),
-                  ],
-                ),
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () => context.go(
+                            original == null
+                                ? '/my-bookings'
+                                : '/bookings/$id',
+                          ),
+                    child: const Text('Назад'),
+                  ),
+                ],
               ),
             ),
     );

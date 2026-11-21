@@ -95,12 +95,11 @@ String statusLabel(BookingStatus status) => switch (status) {
 
 /// Sitewide form labels (nJAWl3x): 18px bold above fields.
 const siteFormLabelGreen = Color(0xFF1B4332);
-const siteFormLabelOchre = Color(0xFF8B5A00);
-const siteFormTitleBlue = Color(0xFF0A3D62);
 
-/// Top-menu chrome (tQm): 18px bold dark-green text; blue frames with green focus.
+/// Top-menu chrome: 16px bold dark-green (BakwA2S, match Schedule view chips);
+/// blue frames with green focus kept from tQm.
 const topNavTextStyle = TextStyle(
-  fontSize: 18,
+  fontSize: 16,
   fontWeight: FontWeight.w700,
   color: siteFormLabelGreen,
 );
@@ -200,34 +199,6 @@ InputDecoration siteFormDecoration({
   suffixIcon: suffixIcon,
 );
 
-/// Ochre borders for «Відгуки та пропозиції» (wjfGBc4).
-ThemeData ochreFormTheme(ThemeData base) {
-  const idle = Color(0xFFC48A2A);
-  const hover = Color(0xFFA66F18);
-  const focus = Color(0xFF8B5A00);
-  const radius = BorderRadius.all(Radius.circular(4));
-  OutlineInputBorder side(Color c) => OutlineInputBorder(
-    borderRadius: radius,
-    borderSide: BorderSide(color: c, width: 2),
-  );
-  return base.copyWith(
-    focusColor: const Color(0x408B5A00),
-    inputDecorationTheme: base.inputDecorationTheme.copyWith(
-      filled: true,
-      fillColor: Colors.white,
-      floatingLabelBehavior: FloatingLabelBehavior.never,
-      border: WidgetStateInputBorder.resolveWith((states) {
-        if (states.contains(WidgetState.focused)) return side(focus);
-        if (states.contains(WidgetState.hovered)) return side(hover);
-        return side(idle);
-      }),
-      enabledBorder: side(idle),
-      focusedBorder: side(focus),
-      focusedErrorBorder: side(focus),
-    ),
-  );
-}
-
 class AppFrame extends ConsumerWidget {
   const AppFrame({
     super.key,
@@ -239,7 +210,7 @@ class AppFrame extends ConsumerWidget {
   final String title;
   final Widget child;
   final Color? backgroundColor;
-  /// Override page title color; default green, create-event uses blue (mJq/pZ3).
+  /// Override page title color; default sitewide dark-green (wQHhFgQ).
   final Color? titleColor;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -258,11 +229,7 @@ class AppFrame extends ConsumerWidget {
         narrow && profile?.role != UserRole.developer && profile != null
             ? !profile.isDisabled
             : narrow && profile == null;
-    final isCreateEvent =
-        location == '/bookings/new' || location == '/admin/events/new';
-    final resolvedTitleColor =
-        titleColor ??
-        (isCreateEvent ? siteFormTitleBlue : siteFormLabelGreen);
+    final resolvedTitleColor = titleColor ?? siteFormLabelGreen;
     final navStyle = topNavLinkStyle();
 
     final publicNav = <Widget>[

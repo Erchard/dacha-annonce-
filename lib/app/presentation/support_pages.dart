@@ -462,59 +462,50 @@ class _FeedbackPageState extends ConsumerState<FeedbackPage> {
   @override
   Widget build(BuildContext context) => AppFrame(
     title: 'Відгуки та пропозиції',
-    child: Theme(
-      data: ochreFormTheme(Theme.of(context)),
-      child: Form(
-        key: form,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Залиште відгук про сайт, повідомте про проблему, запропонуйте покращення. Відповідь адміністрації згодом з’явиться в коментарях.',
+    child: Form(
+      key: form,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Залиште відгук про сайт, повідомте про проблему, запропонуйте покращення. Відповідь адміністрації згодом з’явиться в коментарях.',
+          ),
+          const SizedBox(height: 12),
+          const AppLink(
+            to: '/my-feedback',
+            child: Text('Мої відгуки'),
+          ),
+          const SizedBox(height: 20),
+          siteFormBlock(
+            'Тема',
+            TextFormField(
+              controller: title,
+              maxLength: 160,
+              decoration: siteFormDecoration(),
+              validator: (v) => (v?.trim().runes.length ?? 0) < 3
+                  ? 'Щонайменше 3 символи'
+                  : null,
             ),
-            const SizedBox(height: 12),
-            const AppLink(
-              to: '/my-feedback',
-              child: Text('Мої відгуки'),
+          ),
+          siteFormBlock(
+            'Опис',
+            TextFormField(
+              controller: body,
+              maxLength: 10000,
+              minLines: 5,
+              maxLines: 12,
+              decoration: siteFormDecoration(),
+              validator: (v) => (v?.trim().runes.length ?? 0) < 10
+                  ? 'Щонайменше 10 символів'
+                  : null,
             ),
-            const SizedBox(height: 20),
-            siteFormBlock(
-              'Тема',
-              TextFormField(
-                controller: title,
-                maxLength: 160,
-                decoration: siteFormDecoration(),
-                validator: (v) => (v?.trim().runes.length ?? 0) < 3
-                    ? 'Щонайменше 3 символи'
-                    : null,
-              ),
-              labelColor: siteFormLabelOchre,
-            ),
-            siteFormBlock(
-              'Опис',
-              TextFormField(
-                controller: body,
-                maxLength: 10000,
-                minLines: 5,
-                maxLines: 12,
-                decoration: siteFormDecoration(),
-                validator: (v) => (v?.trim().runes.length ?? 0) < 10
-                    ? 'Щонайменше 10 символів'
-                    : null,
-              ),
-              labelColor: siteFormLabelOchre,
-            ),
-            if (error != null) Problem(error!),
-            FilledButton(
-              onPressed: busy ? null : submit,
-              style: FilledButton.styleFrom(
-                backgroundColor: siteFormLabelOchre,
-                foregroundColor: Colors.white,
-              ),
-              child: Text(busy ? 'Надсилання…' : 'Надіслати'),
-            ),
-          ],
-        ),
+          ),
+          if (error != null) Problem(error!),
+          FilledButton(
+            onPressed: busy ? null : submit,
+            child: Text(busy ? 'Надсилання…' : 'Надіслати'),
+          ),
+        ],
       ),
     ),
   );
@@ -579,10 +570,6 @@ class _MyFeedbackPageState extends ConsumerState<MyFeedbackPage> {
           alignment: Alignment.centerLeft,
           child: FilledButton(
             onPressed: () => context.go('/feedback'),
-            style: FilledButton.styleFrom(
-              backgroundColor: siteFormLabelOchre,
-              foregroundColor: Colors.white,
-            ),
             child: const Text('Новий відгук'),
           ),
         ),

@@ -233,3 +233,11 @@ Production `dacha-annonce`: Hosting + Firestore indexes (`type` + `status` + `la
 - Верхнє меню: 18px bold dark-green, рамки блакитні 2px (hover темніший, focus зелений + glow).
 - Контент/поля: 2px dark-green; create-event blue; feedback ochre.
 - Закрито (`done`): LpscGj2…, mJqkvbO…, 8RGh5CV…, pZ3thyV…, n3k25eg…, oCuAGMz…, tQmZxSq….
+
+## MI tickets 21.11 — topNav 16px + unify form green — 2026-11-21
+
+Production `dacha-annonce`: Hosting «MI Nov-21 topNav 16px + unify forms dark-green». main.dart.js SHA256: `86EF95E0116687ACF151DA9E692DA1E52D008A2C0BEA8B488633A3AD16876778`. Smoke HEAD 200: `/`, `/schedule`, `/bookings/new`, `/feedback`.
+
+- Верхнє меню: шрифт 16px bold dark-green (як «День»/«Тиждень» у Розкладі); блакитні рамки меню збережено.
+- Усі форми sitewide dark-green: прибрано blue create-event і ochre feedback themes.
+- Закрито (`done`): BakwA2S…, wQHhFgQ….

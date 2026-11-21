@@ -241,3 +241,11 @@ Production `dacha-annonce`: Hosting «MI Nov-21 topNav 16px + unify forms dark-g
 - Верхнє меню: шрифт 16px bold dark-green (як «День»/«Тиждень» у Розкладі); блакитні рамки меню збережено.
 - Усі форми sitewide dark-green: прибрано blue create-event і ochre feedback themes.
 - Закрито (`done`): BakwA2S…, wQHhFgQ….
+
+## MI tickets 21.11 (evening) — nav green frames + Statistics — 2026-11-21
+
+Production `dacha-annonce`: Hosting + Firestore Rules «MI Nov-21 nav green frames + admin Statistics siteStats». main.dart.js SHA256: `725427BC60172E6B05A35F848FBE8932366346D06CAAEC0C1C27DF6E70C680CC`. Smoke HEAD 200: `/`, `/admin/statistics`, `/admin/analytics`.
+
+- Верхнє меню: рамки dark-green `#2F5A42` / hover `#244C38` / focus `#1B4332` (як поля сайту).
+- Новий розділ «Статистика» `/admin/statistics`: `siteStats/summary` pageViews + visitors; окремо від «Аналітика» подій.
+- Закрито (`done`): yhtCfdr…, i3icBWj….

@@ -96,16 +96,15 @@ String statusLabel(BookingStatus status) => switch (status) {
 /// Sitewide form labels (nJAWl3x): 18px bold above fields.
 const siteFormLabelGreen = Color(0xFF1B4332);
 
-/// Top-menu chrome: 16px bold dark-green (BakwA2S, match Schedule view chips);
-/// blue frames with green focus kept from tQm.
+/// Top-menu chrome: 16px bold dark-green; frames match site (#2F5A42).
 const topNavTextStyle = TextStyle(
   fontSize: 16,
   fontWeight: FontWeight.w700,
   color: siteFormLabelGreen,
 );
-const _topNavBlue = Color(0xFF7EB6D9);
-const _topNavBlueHover = Color(0xFF4A90B8);
-const _topNavGreenFocus = Color(0xFF1B4332);
+const _topNavIdle = Color(0xFF2F5A42);
+const _topNavHover = Color(0xFF244C38);
+const _topNavFocus = Color(0xFF1B4332);
 
 ButtonStyle topNavLinkStyle({bool outlined = true}) {
   final text = WidgetStateProperty.all(topNavTextStyle);
@@ -130,12 +129,12 @@ ButtonStyle topNavLinkStyle({bool outlined = true}) {
     side: WidgetStateProperty.resolveWith((states) {
       if (states.contains(WidgetState.focused) ||
           states.contains(WidgetState.pressed)) {
-        return const BorderSide(color: _topNavGreenFocus, width: 2);
+        return const BorderSide(color: _topNavFocus, width: 2);
       }
       if (states.contains(WidgetState.hovered)) {
-        return const BorderSide(color: _topNavBlueHover, width: 2);
+        return const BorderSide(color: _topNavHover, width: 2);
       }
-      return const BorderSide(color: _topNavBlue, width: 2);
+      return const BorderSide(color: _topNavIdle, width: 2);
     }),
     overlayColor: WidgetStateProperty.resolveWith((states) {
       if (states.contains(WidgetState.focused) ||
@@ -143,7 +142,7 @@ ButtonStyle topNavLinkStyle({bool outlined = true}) {
         return const Color(0x332F5A42);
       }
       if (states.contains(WidgetState.hovered)) {
-        return const Color(0x1A7EB6D9);
+        return const Color(0x1A2F5A42);
       }
       return null;
     }),
@@ -312,6 +311,12 @@ class AppFrame extends ConsumerWidget {
           outlined: true,
           style: navStyle,
           child: const Text('Аналітика'),
+        ),
+        AppLink(
+          to: '/admin/statistics',
+          outlined: true,
+          style: navStyle,
+          child: const Text('Статистика'),
         ),
         _navBadge(
           count: openTickets,
@@ -496,6 +501,10 @@ class AppFrame extends ConsumerWidget {
                 ListTile(
                   title: const Text('Аналітика'),
                   onTap: () => context.go('/admin/analytics'),
+                ),
+                ListTile(
+                  title: const Text('Статистика'),
+                  onTap: () => context.go('/admin/statistics'),
                 ),
               ],
               if (profile != null &&

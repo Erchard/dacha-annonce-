@@ -531,6 +531,29 @@ service cloud.firestore {
         && a.createdAt == request.time && a.schemaVersion is int && a.schemaVersion == 1;
     }
 
+    function validSiteStats(d) {
+      return exact(d,['pageViews','visitors','updatedAt'])
+        && d.pageViews is int && d.pageViews >= 0
+        && d.visitors is int && d.visitors >= 0
+        && d.updatedAt == request.time;
+    }
+    match /siteStats/{docId} {
+      allow get: if admin() && docId == 'summary';
+      allow list: if false;
+      allow create: if docId == 'summary' && validSiteStats(request.resource.data)
+        && request.resource.data.pageViews <= 1
+        && request.resource.data.visitors <= 1
+        && (request.resource.data.pageViews > 0 || request.resource.data.visitors > 0);
+      allow update: if docId == 'summary' && validSiteStats(request.resource.data)
+        && request.resource.data.pageViews >= resource.data.pageViews
+        && request.resource.data.pageViews <= resource.data.pageViews + 1
+        && request.resource.data.visitors >= resource.data.visitors
+        && request.resource.data.visitors <= resource.data.visitors + 1
+        && (request.resource.data.pageViews > resource.data.pageViews
+          || request.resource.data.visitors > resource.data.visitors);
+      allow delete: if false;
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }

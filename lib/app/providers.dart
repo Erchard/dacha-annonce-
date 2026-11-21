@@ -1,4 +1,5 @@
 import '../features/support/support_repository.dart';
+import '../features/stats/site_stats_repository.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,6 +39,11 @@ final profileProvider = StreamProvider<UserProfile?>((ref) async* {
 final supportRepositoryProvider = Provider<SupportRepository>((ref) {
   final services = ref.watch(firebaseServicesProvider);
   return SupportRepository(services.firestore, services.auth);
+});
+
+final siteStatsRepositoryProvider = Provider<SiteStatsRepository>((ref) {
+  final services = ref.watch(firebaseServicesProvider);
+  return SiteStatsRepository(services.firestore);
 });
 
 /// Pending booking count for admin nav badges (capped display).

@@ -10,8 +10,10 @@ import 'presentation/auth_pages.dart';
 import 'presentation/booking_pages.dart';
 import 'presentation/admin_pages.dart';
 import 'presentation/analytics_pages.dart';
+import 'presentation/statistics_pages.dart';
 import 'presentation/info_pages.dart';
 import 'presentation/support_pages.dart';
+import 'presentation/site_stats_binder.dart';
 
 // Palette measured from fond.boyarka.site (Astra global colors).
 ThemeData dachaTheme() {
@@ -113,7 +115,7 @@ ThemeData dachaTheme() {
       margin: EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(4)),
-        // Content frames (oCu): 2px dark-green; top-nav uses blue separately.
+        // Content frames: 2px dark-green (matches top-nav).
         side: BorderSide(color: Color(0xFF2F5A42), width: 2),
       ),
     ),
@@ -351,6 +353,13 @@ GoRouter createRouter({String? initialLocation}) => GoRouter(
       ),
     ),
     GoRoute(
+      path: '/admin/statistics',
+      builder: (context, state) => const ProtectedPage(
+        roles: [UserRole.admin],
+        child: AdminStatisticsPage(),
+      ),
+    ),
+    GoRoute(
       path: '/admin/feedback',
       builder: (context, state) => const ProtectedPage(
         roles: [UserRole.admin],
@@ -421,6 +430,10 @@ class DachaApp extends StatelessWidget {
     supportedLocales: dachaLocales,
     localizationsDelegates: dachaLocalizations,
     routerConfig: router,
+    builder: (context, child) => SiteStatsBinder(
+      router: router,
+      child: child ?? const SizedBox.shrink(),
+    ),
   );
 }
 

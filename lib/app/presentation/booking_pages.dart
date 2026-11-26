@@ -36,7 +36,7 @@ class _BookingsPageState extends ConsumerState<BookingsPage> {
   @override
   void initState() {
     super.initState();
-    status = null;
+    status = widget.forAdmin ? BookingStatus.pending : null;
     Future.microtask(() => load(reset: true));
   }
 

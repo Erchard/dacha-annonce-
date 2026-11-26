@@ -31,5 +31,7 @@ Future<FirebaseServices> initializeFirebase(AppEnvironment environment) async {
   await auth.setPersistence(
     environment.useEmulators ? Persistence.SESSION : Persistence.LOCAL,
   );
+  // Wait for IndexedDB restore so the first session emission is not a false null.
+  await auth.authStateChanges().first;
   return FirebaseServices(auth: auth, firestore: firestore);
 }

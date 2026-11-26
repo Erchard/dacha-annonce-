@@ -146,9 +146,9 @@ service cloud.firestore {
           && text(name,1,160));
     }
     function validTargetAudiences(values) {
-      return values is list && values.size() > 0 && values.size() <= 9
+      return values is list && values.size() > 0 && values.size() <= 10
         && values.toSet().size() == values.size()
-        && values.hasOnly(['Усі охочі','Діти','Сім\'ї з дітьми','Підлітки','Молодь','Дорослі','Жінки','Люди старшого віку','Друзі/ партнери'])
+        && values.hasOnly(['Усі охочі','Діти','Сім\'ї з дітьми','Підлітки','Молодь','Дорослі','Жінки','Люди старшого віку','Друзі/ партнери','Актив Дачі'])
         && (!( 'Усі охочі' in values) || values.size() == 1);
     }
     function validLegacyDirections(d) {

@@ -254,10 +254,12 @@ class AppRepository
       );
     }
     final order = upcoming ? 'startAt' : 'createdAt';
+    // Admin: newest created first; organizer upcoming: soonest start first.
+    final descending = forAdmin;
     final result = await _cursor(
       query
-          .orderBy(order, descending: !upcoming && !forAdmin)
-          .orderBy(FieldPath.documentId, descending: !upcoming && !forAdmin),
+          .orderBy(order, descending: descending)
+          .orderBy(FieldPath.documentId, descending: descending),
       page,
       key,
     ).get();
@@ -495,7 +497,7 @@ class FirebaseAuthRepository implements AuthRepository {
   final FirebaseAuth auth;
   final FirebaseFirestore db;
   @override
-  Stream<AuthSession?> get session => auth.userChanges().map(
+  Stream<AuthSession?> get session => auth.authStateChanges().map(
     (u) =>
         u == null ? null : AuthSession(u.uid, emailVerified: u.emailVerified),
   );

@@ -213,7 +213,9 @@ class AppFrame extends ConsumerWidget {
   final Color? titleColor;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(sessionProvider).asData?.value;
+    final sessionAsync = ref.watch(sessionProvider);
+    final session = sessionAsync.asData?.value;
+    final sessionLoading = sessionAsync.isLoading;
     final profile = ref.watch(profileProvider).asData?.value;
     final pendingCount =
         ref.watch(pendingBookingsCountProvider).asData?.value ?? 0;
@@ -537,11 +539,20 @@ class AppFrame extends ConsumerWidget {
                 onTap: () => context.go('/help'),
               ),
               ListTile(
-                title: Text(session == null ? 'Увійти' : 'Мій профіль'),
-                onTap: () =>
-                    context.go(session == null ? '/login' : '/account'),
+                title: Text(
+                  sessionLoading
+                      ? 'Завантаження…'
+                      : session == null
+                      ? 'Увійти'
+                      : 'Мій профіль',
+                ),
+                onTap: sessionLoading
+                    ? null
+                    : () => context.go(
+                        session == null ? '/login' : '/account',
+                      ),
               ),
-              if (session != null)
+              if (!sessionLoading && session != null)
                 ListTile(
                   title: const Text('Вийти'),
                   onTap: () async {

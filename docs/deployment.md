@@ -249,3 +249,12 @@ Production `dacha-annonce`: Hosting + Firestore Rules «MI Nov-21 nav green fram
 - Верхнє меню: рамки dark-green `#2F5A42` / hover `#244C38` / focus `#1B4332` (як поля сайту).
 - Новий розділ «Статистика» `/admin/statistics`: `siteStats/summary` pageViews + visitors; окремо від «Аналітика» подій.
 - Закрито (`done`): yhtCfdr…, i3icBWj….
+
+## MI tickets 26.11 — admin list + audience + auth restore — 2026-11-26
+
+Production `dacha-annonce`: Hosting + Firestore Rules + indexes (`status` + `createdAt` DESC) «MI Nov-26 admin list sort/pending, Актив Дачі, auth restore». main.dart.js SHA256: `213A88D1FA39C75480C78D35AA94DB491B65E91F71EAA59E7CFA751A4525F2F1`. Smoke HEAD 200: `/`, `/admin`, `/bookings/new`.
+
+- «Керування подіями»: сортування `createdAt` desc; статус за замовчуванням «Очікує рішення».
+- Цільова група «Актив Дачі» (+ rules `size <= 10`).
+- Auth: `authStateChanges` + await restore після LOCAL; меню не показує «Увійти» під час loading.
+- Закрито (`done`): UQlfUTF…, WPT3MMU…, Mm6pUb6…, xCpqkHu….

@@ -85,6 +85,7 @@ const targetAudienceOptions = <String>[
   'Жінки',
   'Люди старшого віку',
   'Друзі/ партнери',
+  'Актив Дачі',
 ];
 
 const coverImageContentTypes = {'image/jpeg', 'image/png', 'image/webp'};
